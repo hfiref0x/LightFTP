@@ -30,24 +30,7 @@ Available user access rights:
 * upload - creating new directories, store new files, append disabled
 * Note: any other access right is similar to banned.
 
-Example of configuration file.
-
-[ftpconfig]
-port=5551
-maxusers=8
-interface="0.0.0.0"
-logfilepath="C:\TEMP"
-
-[user1]
-pswd=password1
-accs=upload
-root="C:\Downloads\"
-
-[anonymous]
-pswd=*
-accs=readonly
-root="C:\Downloads\"
-
+Example of configuration file can be found in Compiled directory.
 
 # Build 
 
