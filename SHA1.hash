@@ -1,7 +1,7 @@
-4b83f34d06f9a38636827c45c63aa0c4ff2c7fbc *Compiled\fftp-x86-32-rel.exe
+5884aeca33429830b39eba6d3ddb00680037faf4 *Compiled\fftp-x86-32-rel.exe
 989525f85abef05581ccab673e81df3f5d50be36 *Compiled\fftp-x86-64-rel.exe
 ce9821213538d39775af4a48550eefa3908323c5 *Compiled\fftp.cfg
-84b1b3565e22d8bcd07aadb631deea0bfd94d3bb *Source\fftp\fftp.vcxproj
+6b1b94302bbb0214b586180b256e0d3499eea767 *Source\fftp\fftp.vcxproj
 452a91017e90a2da1f7841d638ce5f6ec0392290 *Source\fftp\fftp.vcxproj.filters
 2c9a9b9948470b297667c9b2420ca7ef4c734ecf *Source\fftp\fftp.vcxproj.user
 acbea4fa44344152b6a88d1e1c7a50608ad99959 *Source\fftp\ftpserv.c
