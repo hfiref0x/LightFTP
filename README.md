@@ -35,7 +35,7 @@ Example of configuration file can be found in Compiled directory.
 # Build 
 
 * LightFTP comes with full source code.
-* In order to build from source you need Microsoft Visual Studio 2013 U4 and later versions.
+* In order to build from source you need Microsoft Visual Studio 2013/2015 and later versions.
  
 
 # Authors
