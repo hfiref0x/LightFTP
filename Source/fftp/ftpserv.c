@@ -5,6 +5,7 @@
 #include "ftpserv.h"
 
 static HANDLE	g_LogHandle = NULL;
+LONG			g_NewID = 0;
 
 BOOL sendstring(
 	SOCKET s, 
@@ -71,7 +72,7 @@ BOOL writelogentry(
 	ultostr_a(tm.wSecond, cvbuf);
 	_strcat_a(textbuf, cvbuf);
 
-	_strcat_a(textbuf, " SessionID=");
+	_strcat_a(textbuf, " S-id=");
 	ultostr_a(context->SessionID, _strend_a(textbuf));
 	_strcat_a(textbuf, ": ");
 	_strcat_a(textbuf, logtext1);
@@ -81,7 +82,9 @@ BOOL writelogentry(
 	return writeconsolestr(context->LogHandle, textbuf);
 }
 
-void unixpath(char *s)
+void unixpath(
+	char *s
+	)
 {
 	while ( *s != 0 ) {
 		if ( *s == '\\' )
@@ -90,7 +93,9 @@ void unixpath(char *s)
 	}
 }
 
-void ntpath(char *s)
+void ntpath(
+	char *s
+	)
 {
 	while ( *s != 0 ) {
 		if ( *s == '/' )
@@ -99,7 +104,9 @@ void ntpath(char *s)
 	}
 }
 
-void nolastslash(char *s)
+void nolastslash(
+	char *s
+	)
 {
 	if ( s == NULL )
 		return;
@@ -117,7 +124,9 @@ void nolastslash(char *s)
 		*s = 0;
 }
 
-void addlastslash(char *s)
+void addlastslash(
+	char *s
+	)
 {
 	if ( s == NULL )
 		return;
@@ -138,7 +147,9 @@ void addlastslash(char *s)
 	s[2] = 0;
 }
 
-void formatpath(char *s) // removes multiple slashes, dots
+void formatpath( // removes multiple slashes, dots
+	char *s
+	) 
 {
 	char	*d = s, *p = s;
 
@@ -186,7 +197,9 @@ void formatpath(char *s) // removes multiple slashes, dots
 	*d = 0;
 }
 
-void filepath(char *s)
+void filepath(
+	char *s
+	)
 {
 	char	*p = s;
 
@@ -239,88 +252,127 @@ BOOL list_sub(
 	)
 {
 	TCHAR			textbuf[MAX_PATH];
-#ifdef UNICODE
 	CHAR			sendbuf[MAX_PATH];
-#endif
-	ULARGE_INTEGER	sz;
+	FILETIME		ltm;
+	ULARGE_INTEGER	sz, deltatime;
 	SYSTEMTIME		tm;
-	FILETIME		ltime;
-	int				x;
 
 	if ( _strcmp(fdata->cFileName, TEXT(".")) == 0 )
 		return TRUE;
 	if ( _strcmp(fdata->cFileName, TEXT("..")) == 0 )
 		return TRUE;
 
-	RtlSecureZeroMemory(&ltime, sizeof(ltime));
+	RtlSecureZeroMemory(&ltm, sizeof(ltm));
 	RtlSecureZeroMemory(&tm, sizeof(tm));
-	if (FileTimeToLocalFileTime(&fdata->ftLastWriteTime, &ltime))
-		FileTimeToSystemTime(&ltime, &tm);
 
-	if ( tm.wMonth < 10 ) {
-		textbuf[0] = '0';
-		ultostr(tm.wMonth, &textbuf[1]);
-	} else
-		ultostr(tm.wMonth, textbuf);
+	if ((fdata->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+		_strcpy(textbuf, TEXT("-rw-rw-rw- 1"));
+	else
+		_strcpy(textbuf, TEXT("drwxrwxrwx 2"));
 
-	_strcat(textbuf, TEXT("-"));
+	_strcat(textbuf, TEXT(" 9001 9001 "));
 
-	if ( tm.wDay < 10 ) {
-		_strcat(textbuf, TEXT("0"));
-		ultostr(tm.wDay, _strend(textbuf));
-	} else
-		ultostr(tm.wDay, _strend(textbuf));
-
-	_strcat(textbuf, TEXT("-"));
-	ultostr(tm.wYear, _strend(textbuf));
+	sz.LowPart = fdata->nFileSizeLow;
+	sz.HighPart = fdata->nFileSizeHigh;
+	u64tostr(sz.QuadPart, _strend(textbuf));
 	_strcat(textbuf, TEXT(" "));
 
-	x = tm.wHour % 12;
-	if ( x == 0 )
-		x = 12;
+	GetSystemTimeAsFileTime(&ltm);
+	sz.HighPart = fdata->ftLastWriteTime.dwHighDateTime;
+	sz.LowPart = fdata->ftLastWriteTime.dwLowDateTime;
+	deltatime.HighPart = ltm.dwHighDateTime;
+	deltatime.LowPart = ltm.dwLowDateTime;
+	deltatime.QuadPart -= sz.QuadPart;
 
-	if ( x < 10 ) {
+	FileTimeToLocalFileTime(&fdata->ftLastWriteTime, &ltm);
+	FileTimeToSystemTime(&ltm, &tm);
+
+	_strncpy(_strend(textbuf), 4, &shortmonths[(tm.wMonth-1) * 3], 4);
+	_strcat(textbuf, TEXT(" "));
+
+	if ( tm.wDay < 10 )
 		_strcat(textbuf, TEXT("0"));
-		ultostr(x, _strend(textbuf));
-	} else
-		ultostr(x, _strend(textbuf));
+	ultostr(tm.wDay, _strend(textbuf));
+	_strcat(textbuf, TEXT(" "));
 
-	_strcat(textbuf, TEXT(":"));
+	if (deltatime.QuadPart < (180*24*60*60*10000000ui64)) {
+		if (tm.wHour < 10)
+			_strcat(textbuf, TEXT("0"));
+		ultostr(tm.wHour, _strend(textbuf));
+		_strcat(textbuf, TEXT(":"));
 
-	if ( tm.wMinute < 10 ) {
-		_strcat(textbuf, TEXT("0"));
+		if (tm.wMinute < 10)
+			_strcat(textbuf, TEXT("0"));
 		ultostr(tm.wMinute, _strend(textbuf));
-	} else
-		ultostr(tm.wMinute, _strend(textbuf));
-
-	if ( tm.wHour < 12 )
-		_strcat(textbuf, TEXT("AM"));
-	else
-		_strcat(textbuf, TEXT("PM"));
-
-	if ( (fdata->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 )
-		_strcat(textbuf, TEXT(" <DIR> "));
-	else {
-		_strcat(textbuf, TEXT("       "));
-		sz.LowPart = fdata->nFileSizeLow;
-		sz.HighPart = fdata->nFileSizeHigh;
-		u64tostr(sz.QuadPart, _strend(textbuf));
-		_strcat(textbuf, TEXT(" "));
+	} else {
+		ultostr(tm.wYear, _strend(textbuf));
 	}
+	_strcat(textbuf, TEXT(" "));
 
-#ifdef UNICODE
 	WideCharToMultiByte(CP_UTF8, 0, textbuf, MAX_PATH, sendbuf, MAX_PATH, NULL, NULL);
 	if ( !sendstring(s, sendbuf) )
 		return FALSE;
 	WideCharToMultiByte(CP_UTF8, 0, fdata->cFileName, MAX_PATH, sendbuf, MAX_PATH, NULL, NULL);
 	if ( !sendstring(s, sendbuf) )
 		return FALSE;
-#else
-	if ( !sendstring(s, textbuf) )
+
+	return sendstring(s, CRLF);
+}
+
+BOOL mlsd_sub(
+	SOCKET s, 
+	WIN32_FIND_DATA *fdata
+	)
+{
+	TCHAR			textbuf[MAX_PATH];
+	CHAR			sendbuf[MAX_PATH];
+	ULARGE_INTEGER	sz;
+	SYSTEMTIME		tm;
+
+	if (_strcmp(fdata->cFileName, TEXT(".")) == 0)
+		return TRUE;
+	if (_strcmp(fdata->cFileName, TEXT("..")) == 0)
+		return TRUE;
+
+	_strcpy(textbuf, TEXT("type="));
+	if ((fdata->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+		_strcat(textbuf, TEXT("file;size="));
+	else
+		_strcat(textbuf, TEXT("dir;sizd="));
+
+	sz.LowPart = fdata->nFileSizeLow;
+	sz.HighPart = fdata->nFileSizeHigh;
+	u64tostr(sz.QuadPart, _strend(textbuf));
+	_strcat(textbuf, TEXT(";modify="));
+
+	RtlSecureZeroMemory(&tm, sizeof(tm));
+	FileTimeToSystemTime(&fdata->ftLastWriteTime, &tm);
+
+	ultostr(tm.wYear, _strend(textbuf));
+	if (tm.wMonth < 10)
+		_strcat(textbuf, TEXT("0"));
+	ultostr(tm.wMonth, _strend(textbuf));
+	if (tm.wDay < 10)
+		_strcat(textbuf, TEXT("0"));
+	ultostr(tm.wDay, _strend(textbuf));
+	if (tm.wHour < 10)
+		_strcat(textbuf, TEXT("0"));
+	ultostr(tm.wHour, _strend(textbuf));
+	if (tm.wMinute < 10)
+		_strcat(textbuf, TEXT("0"));
+	ultostr(tm.wMinute, _strend(textbuf));
+	if (tm.wSecond < 10)
+		_strcat(textbuf, TEXT("0"));
+	ultostr(tm.wSecond, _strend(textbuf));
+	_strcat(textbuf, TEXT("; "));
+
+	WideCharToMultiByte(CP_UTF8, 0, textbuf, MAX_PATH, sendbuf, MAX_PATH, NULL, NULL);
+	if (!sendstring(s, sendbuf))
 		return FALSE;
-	if ( !sendstring(s, fdata->cFileName) )
+	WideCharToMultiByte(CP_UTF8, 0, fdata->cFileName, MAX_PATH, sendbuf, MAX_PATH, NULL, NULL);
+	if (!sendstring(s, sendbuf))
 		return FALSE;
-#endif // UNICODE
+
 	return sendstring(s, CRLF);
 }
 
@@ -414,6 +466,54 @@ error_exit:
 	return 0;
 }
 
+DWORD WINAPI mlsd_thread(
+	IN PFTPCONTEXT context
+	)
+{
+	SOCKET				clientsocket, control;
+	HANDLE				File;
+	BOOL				sendok = FALSE;
+	WIN32_FIND_DATA		fdata;
+
+	EnterCriticalSection(&context->MTLock);
+	control = context->ControlSocket;
+	clientsocket = create_datasocket(context);
+	if (clientsocket == INVALID_SOCKET)
+		goto error_exit;
+
+	RtlSecureZeroMemory(&fdata, sizeof(fdata));
+	File = FindFirstFile(context->TextBuffer, &fdata);
+	if (File != INVALID_HANDLE_VALUE) {
+		sendok = mlsd_sub(clientsocket, &fdata);
+		while (FindNextFile(File, &fdata) && (!context->Stop) && sendok)
+			sendok = mlsd_sub(clientsocket, &fdata);
+		FindClose(File);
+	}
+	sendok = (context->Stop == FALSE) && (sendok != FALSE);
+
+error_exit:
+	if (clientsocket != INVALID_SOCKET)
+		closesocket(clientsocket);
+
+	writelogentry(context, " LIST complete", NULL);
+
+	CloseHandle(context->WorkerThread);
+	context->WorkerThread = NULL;
+	LeaveCriticalSection(&context->MTLock);
+
+	if (clientsocket == INVALID_SOCKET) {
+		sendstring(control, error451);
+	}
+	else {
+		if (sendok)
+			sendstring(control, success226);
+		else
+			sendstring(control, error426);
+	}
+
+	return 0;
+}
+
 DWORD WINAPI retr_thread(
 	IN PFTPCONTEXT context
 	)
@@ -422,7 +522,8 @@ DWORD WINAPI retr_thread(
 	LPSTR			textbuf = NULL;
 	BOOL			sendok = FALSE;
 	int				asz;
-	LARGE_INTEGER	lsz;
+	LARGE_INTEGER	lsz, dt0, dt1;
+	FILETIME		txtime;
 
 	EnterCriticalSection(&context->MTLock);
 	control = context->ControlSocket;
@@ -443,6 +544,11 @@ DWORD WINAPI retr_thread(
 		goto error_exit;
 	}
 
+	GetSystemTimeAsFileTime(&txtime);
+	dt0.HighPart = txtime.dwHighDateTime;
+	dt0.LowPart = txtime.dwLowDateTime;
+	lsz.QuadPart = 0;
+
 	SetFilePointerEx(context->FileHandle, context->RestPoint, NULL, FILE_BEGIN);
 	while ( !context->Stop ) {
 		asz = 0;
@@ -458,6 +564,21 @@ DWORD WINAPI retr_thread(
 
 		if ( !sendok )
 			break;
+		
+		lsz.QuadPart += asz;
+		GetSystemTimeAsFileTime(&txtime);
+		dt1.HighPart = txtime.dwHighDateTime;
+		dt1.LowPart = txtime.dwLowDateTime;
+		dt1.QuadPart -= dt0.QuadPart;
+		if (dt1.QuadPart > 100000000ui64) { // 10 seconds
+			_strcpy_a(textbuf, " retr speed: ");
+			u64tostr_a(((10000000ui64*lsz.QuadPart) / dt1.QuadPart) / 1024, _strend_a(textbuf));
+			_strcat_a(textbuf, " kBytes/s");
+			writelogentry(context, textbuf, NULL);
+			lsz.QuadPart = 0;
+			dt0.HighPart = txtime.dwHighDateTime;
+			dt0.LowPart = txtime.dwLowDateTime;
+		}
 	}
 	sendok = ( context->Stop == FALSE ) && ( sendok != FALSE );
 
@@ -606,12 +727,8 @@ BOOL WINAPI ftpSTOR(
 	finalpath(context->RootDir, context->CurrentDir, (char *)params, textbuf);
 	nolastslash(textbuf);
 
-#ifdef UNICODE
 	if (MultiByteToWideChar(CP_UTF8, 0, textbuf, MAX_PATH, filename, MAX_PATH) <= 0)
 		filename[0] = 0;
-#else
-	_strncpy(filename, MAX_PATH, textbuf, MAX_PATH);
-#endif
 
 	if ( context->Access > FTP_ACCESS_CREATENEW )
 		fileaccess = CREATE_ALWAYS;
@@ -661,12 +778,8 @@ BOOL WINAPI ftpAPPE(
 	finalpath(context->RootDir, context->CurrentDir, (char *)params, textbuf);
 	nolastslash(textbuf);
 
-#ifdef UNICODE
 	if (MultiByteToWideChar(CP_UTF8, 0, textbuf, MAX_PATH, filename, MAX_PATH) <= 0)
 		filename[0] = 0;
-#else
-	_strncpy(filename, MAX_PATH, textbuf, MAX_PATH);
-#endif
 
 	context->FileHandle = CreateFile(filename, SYNCHRONIZE | GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	if ( context->FileHandle == INVALID_HANDLE_VALUE )
@@ -709,12 +822,8 @@ BOOL WINAPI ftpRETR(
 	finalpath(context->RootDir, context->CurrentDir, (char *)params, textbuf);
 	nolastslash(textbuf);
 
-#ifdef UNICODE
 	if (MultiByteToWideChar(CP_UTF8, 0, textbuf, MAX_PATH, filename, MAX_PATH) <= 0)
 		filename[0] = 0;
-#else
-	_strncpy(filename, MAX_PATH, textbuf, MAX_PATH);
-#endif
 
 	context->FileHandle = CreateFile(filename, SYNCHRONIZE | GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
 	if ( context->FileHandle == INVALID_HANDLE_VALUE )
@@ -760,12 +869,8 @@ BOOL WINAPI ftpLIST(
 
 	finalpath(context->RootDir, context->CurrentDir, (char *)params, textbuf);
 
-#ifdef UNICODE
 	if (MultiByteToWideChar(CP_UTF8, 0, textbuf, MAX_PATH, context->TextBuffer, MAX_PATH) <= 0)
 		context->TextBuffer[0] = 0;
-#else
-	_strncpy(context->TextBuffer, MAX_PATH, textbuf, MAX_PATH);
-#endif
 
 	if ( !GetFileAttributesEx(context->TextBuffer, GetFileExInfoStandard, &adata) )
 		return sendstring(context->ControlSocket, error550);
@@ -935,12 +1040,8 @@ BOOL WINAPI ftpCWD(
 	RtlSecureZeroMemory(textbuf, sizeof(textbuf));
 	finalpath(context->RootDir, context->CurrentDir, (char *)params, textbuf);
 
-#ifdef UNICODE
 	if (MultiByteToWideChar(CP_UTF8, 0, textbuf, MAX_PATH, dirname, MAX_PATH) <= 0)
 		dirname[0] = 0;
-#else
-	_strncpy(dirname, MAX_PATH, textbuf, MAX_PATH);
-#endif
 
 	if ( !GetFileAttributesEx(dirname, GetFileExInfoStandard, &adata) )
 		return sendstring(context->ControlSocket, error550);
@@ -981,12 +1082,8 @@ BOOL WINAPI ftpDELE(
 	finalpath(context->RootDir, context->CurrentDir, (char *)params, textbuf);
 	nolastslash(textbuf);
 
-#ifdef UNICODE
 	if (MultiByteToWideChar(CP_UTF8, 0, textbuf, MAX_PATH, filename, MAX_PATH) <= 0)
 		filename[0] = 0;
-#else
-	_strncpy(filename, MAX_PATH, textbuf, MAX_PATH);
-#endif
 
 	if ( DeleteFile(filename) ) {
 		sendstring(context->ControlSocket, success250);
@@ -1016,12 +1113,8 @@ BOOL WINAPI ftpRMD(
 	RtlSecureZeroMemory(textbuf, sizeof(textbuf));
 	finalpath(context->RootDir, context->CurrentDir, (char *)params, textbuf);
 
-#ifdef UNICODE
 	if (MultiByteToWideChar(CP_UTF8, 0, textbuf, MAX_PATH, filename, MAX_PATH) <= 0)
 		filename[0] = 0;
-#else
-	_strncpy(filename, MAX_PATH, textbuf, MAX_PATH);
-#endif
 
 	if ( RemoveDirectory(filename) ) {
 		sendstring(context->ControlSocket, success250);
@@ -1051,12 +1144,8 @@ BOOL WINAPI ftpMKD(
 	RtlSecureZeroMemory(textbuf, sizeof(textbuf));
 	finalpath(context->RootDir, context->CurrentDir, (char *)params, textbuf);
 
-#ifdef UNICODE
 	if (MultiByteToWideChar(CP_UTF8, 0, textbuf, MAX_PATH, filename, MAX_PATH) <= 0)
 		filename[0] = 0;
-#else
-	_strncpy(filename, MAX_PATH, textbuf, MAX_PATH);
-#endif
 
 	if ( CreateDirectory(filename, NULL) ) {
 		sendstring(context->ControlSocket, success257);
@@ -1087,12 +1176,8 @@ BOOL WINAPI ftpSIZE(
 	finalpath(context->RootDir, context->CurrentDir, (char *)params, textbuf);
 	nolastslash(textbuf);
 
-#ifdef UNICODE
 	if (MultiByteToWideChar(CP_UTF8, 0, textbuf, MAX_PATH, filename, MAX_PATH) <= 0)
 		filename[0] = 0;
-#else
-	_strncpy(filename, MAX_PATH, textbuf, MAX_PATH);
-#endif
 
 	if ( !GetFileAttributesEx(filename, GetFileExInfoStandard, &adata) )
 		return sendstring(context->ControlSocket, error550);
@@ -1113,20 +1198,22 @@ BOOL WINAPI ftpUSER(
 	IN const char *params
 	)
 {
+	CHAR	textbuf[MAX_PATH*3];
+
 	if ( params == NULL )
 		return sendstring(context->ControlSocket, error501);
 
 	context->Access = FTP_ACCESS_NOT_LOGGED_IN;
 
-#ifdef UNICODE
 	if (MultiByteToWideChar(CP_UTF8, 0, params, MAX_PATH, context->UserName, MAX_PATH) <= 0)
 		context->UserName[0] = 0;
-#else
-	_strncpy(context->UserName, sizeof(context->UserName)/sizeof(TCHAR), params, MAX_PATH);
-#endif
 
 	writelogentry(context, " USER: ", (char *)params);
-	return sendstring(context->ControlSocket, interm331);
+
+	_strcpy_a(textbuf, interm331);
+	_strcat_a(textbuf, (char *)params);
+	_strcat_a(textbuf, interm331_tail);
+	return sendstring(context->ControlSocket, textbuf);
 }
 
 BOOL WINAPI ftpQUIT(
@@ -1174,12 +1261,8 @@ BOOL WINAPI ftpPASS(
 	if ( GetPrivateProfileString(context->UserName, TEXT("pswd"), NULL, pswd, sizeof(pswd)/sizeof(TCHAR), ConfigFilePath) == 0 )
 		return sendstring(context->ControlSocket, error530_r);
 
-#ifdef UNICODE
 	if (MultiByteToWideChar(CP_UTF8, 0, params, MAX_PATH, temptext, MAX_PATH) <= 0)
 		temptext[0] = 0;
-#else
-	_strncpy(temptext, sizeof(temptext)/sizeof(TCHAR), params, MAX_PATH);
-#endif
 
 	if ( (_strcmp(pswd, temptext) != 0) && (pswd[0] != '*') )
 		return sendstring(context->ControlSocket, error530_r);
@@ -1188,15 +1271,9 @@ BOOL WINAPI ftpPASS(
 	RtlSecureZeroMemory(temptext, sizeof(temptext));
 
 	cch = GetPrivateProfileString(context->UserName, TEXT("root"), NULL, temptext, MAX_PATH, ConfigFilePath);
-
-#ifdef UNICODE
 	WideCharToMultiByte(CP_UTF8, 0, temptext, cch, context->RootDir, MAX_PATH, NULL, NULL);
-#else
-	_strcpy(context->RootDir, temptext);
-#endif
 
-	GetPrivateProfileString(context->UserName, TEXT("accs"), NULL, 
-		temptext, sizeof(temptext)/sizeof(TCHAR), ConfigFilePath);
+	GetPrivateProfileString(context->UserName, TEXT("accs"), NULL, temptext, sizeof(temptext)/sizeof(TCHAR), ConfigFilePath);
 
 	context->Access = FTP_ACCESS_NOT_LOGGED_IN;
 	while ( xtrue ) {
@@ -1346,12 +1423,8 @@ BOOL WINAPI ftpRNFR(
 	finalpath(context->RootDir, context->CurrentDir, (char *)params, textbuf);
 	nolastslash(textbuf);
 
-#ifdef UNICODE
 	if (MultiByteToWideChar(CP_UTF8, 0, textbuf, MAX_PATH, filename, MAX_PATH) <= 0)
 		filename[0] = 0;
-#else
-	_strncpy(filename, MAX_PATH, textbuf, MAX_PATH);
-#endif
 
 	if ( GetFileAttributesEx(filename, GetFileExInfoStandard, &adata) == 0 )
 		return sendstring(context->ControlSocket, error550);
@@ -1381,12 +1454,8 @@ BOOL WINAPI ftpRNTO(
 	finalpath(context->RootDir, context->CurrentDir, (char *)params, textbuf);
 	nolastslash(textbuf);
 
-#ifdef UNICODE
 	if (MultiByteToWideChar(CP_UTF8, 0, textbuf, MAX_PATH, filename, MAX_PATH) <= 0)
 		filename[0] = 0;
-#else
-	_strncpy(filename, MAX_PATH, textbuf, MAX_PATH);
-#endif
 
 	if ( GetFileAttributesEx(filename, GetFileExInfoStandard, &adata) != 0 )
 		return sendstring(context->ControlSocket, error550);
@@ -1399,9 +1468,67 @@ BOOL WINAPI ftpRNTO(
 	return sendstring(context->ControlSocket, success250);
 }
 
+BOOL WINAPI ftpOPTS(
+	IN PFTPCONTEXT context, 
+	IN const char *params
+	)
+{
+	UNREFERENCED_PARAMETER(params);
+	UNREFERENCED_PARAMETER(context);
+
+	return sendstring(context->ControlSocket, success200);
+}
+
+BOOL WINAPI ftpMLSD(
+	IN PFTPCONTEXT context, 
+	IN const char *params
+	)
+{
+	WIN32_FILE_ATTRIBUTE_DATA	adata;
+	HANDLE						wth;
+	CHAR						textbuf[MAX_PATH * 3];
+
+	UNREFERENCED_PARAMETER(params);
+
+	if (context->Access == FTP_ACCESS_NOT_LOGGED_IN)
+		return sendstring(context->ControlSocket, error530);
+	if (context->WorkerThread != NULL)
+		return sendstring(context->ControlSocket, error550_t);
+
+	context->FileHandle = INVALID_HANDLE_VALUE;
+
+	RtlSecureZeroMemory(textbuf, sizeof(textbuf));
+	RtlSecureZeroMemory(context->TextBuffer, sizeof(context->TextBuffer));
+
+	finalpath(context->RootDir, context->CurrentDir, NULL, textbuf);
+	if (MultiByteToWideChar(CP_UTF8, 0, textbuf, MAX_PATH, context->TextBuffer, MAX_PATH) <= 0)
+		context->TextBuffer[0] = 0;
+
+	if (!GetFileAttributesEx(context->TextBuffer, GetFileExInfoStandard, &adata))
+		return sendstring(context->ControlSocket, error550);
+	if ((adata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+		return sendstring(context->ControlSocket, error550);
+
+	_strcat(context->TextBuffer, TEXT("*"));
+
+	sendstring(context->ControlSocket, interm150);
+	writelogentry(context, " MLSD-LIST", (char *)params);
+	context->Stop = FALSE;
+
+	wth = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)&mlsd_thread, (LPVOID)context, 0, NULL);
+	if (wth == NULL)
+		sendstring(context->ControlSocket, error451);
+	else
+		context->WorkerThread = wth;
+
+	return TRUE;
+}
+
 /* FTP COMMANDS END */
 
-char recvchar(SOCKET s)
+char recvchar(
+	SOCKET s
+	)
 {
 	char	c = 0;
 
@@ -1511,7 +1638,7 @@ DWORD WINAPI ftpthread(
 	ctx.ClientIPv4 = laddr.sin_addr.S_un.S_addr;
 	ctx.Mode = MODE_NORMAL;
 	ctx.Stop = FALSE;
-	ctx.SessionID = (ULONG)GetTickCount64() + laddr.sin_port;
+	ctx.SessionID = InterlockedIncrement(&g_NewID);
 	
 	InitializeCriticalSection(&ctx.MTLock);
 	do {
@@ -1527,14 +1654,13 @@ DWORD WINAPI ftpthread(
 			else
 				_strcat_a(params, ":");
 		}
-		
 		ultostr_a(((laddr.sin_port >> 8) & 0xff) + ((laddr.sin_port << 8) & 0xff00), _strend_a(params));
 		
 		writelogentry(&ctx, "<- New user IP=", params);
 
 		while ( ctx.ControlSocket != INVALID_SOCKET ) {
 			RtlSecureZeroMemory(cmd, sizeof(cmd));
-			c = recvcmd(ctx.ControlSocket, cmd, 8);
+			c = recvcmd(ctx.ControlSocket, cmd, 7);
 			if ( c == 0 )
 				break;
 
@@ -1591,9 +1717,7 @@ DWORD WINAPI ftpmain(
 	if ( ftpsocket == INVALID_SOCKET )
 		return 0;
 
-	scb = (SOCKET *)VirtualAlloc(NULL, sizeof(SOCKET)*maxusers, 
-		MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-
+	scb = (SOCKET *)VirtualAlloc(NULL, sizeof(SOCKET)*maxusers, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if ( scb == NULL ) {
 		closesocket(ftpsocket);
 		return 0;
@@ -1640,8 +1764,9 @@ DWORD WINAPI ftpmain(
 		}
 	}
 
-	OutputDebugString(TEXT("\r\n*FTP thread exit*\r\n"));
 	VirtualFree(scb, 0, MEM_RELEASE);
 	closesocket(ftpsocket);
+
+	OutputDebugString(TEXT("\r\n*FTP thread exit*\r\n"));
 	return 1;
 }

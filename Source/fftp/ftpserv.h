@@ -1,15 +1,14 @@
 #ifndef _FTPSERV_
 #define _FTPSERV_
+#pragma comment(lib, "ws2_32.lib")
 
 #pragma warning(disable: 6258) //using TerminateThread does not allow proper thread clean up.
-
-#pragma comment(lib, "ws2_32.lib")
 
 static const char success200[]		= "200 Command okay.\r\n";
 static const char success200_1[]	= "200 Type set to A.\r\n";
 static const char success200_2[]	= "200 Type set to I.\r\n";
-static const char success211[]		= "211-Features:\n TVFS\n REST STREAM\n SIZE\r\n";
-static const char success211_end[]	= "211 End\r\n\r\n";
+static const char success211[]		= "211-Extensions supported:\r\n PASV\r\n UTF8\r\n TVFS\r\n REST STREAM\n SIZE\r\n MLSD\r\n";
+static const char success211_end[]	= "211 End.\r\n";
 static const char success215[]		= "215 Windows_NT Type: L8\r\n";
 static const char success220[]		= "220 LightFTP server v1.0 ready\r\n";
 static const char success221[]		= "221 Goodbye!\r\n";
@@ -34,9 +33,12 @@ static const char interm125[]		= "125 Data connection already open; Transfer sta
 static const char interm150[]		= "150 File status okay; about to open data connection.\r\n";
 static const char interm350[]		= "350 REST supported. Ready to resume at byte offset ";
 static const char interm350_ren[]	= "350 File exists. Ready to rename.\r\n";
-static const char interm331[]		= "331 Enter password.\r\n";
+static const char interm331[]		= "331 User ";
+static const char interm331_tail[]  = " OK. Password required\r\n";
 static const char noslots[]			= "MAXIMUM ALLOWED USERS CONNECTED\r\n";
 static const char CRLF[]			= "\r\n";
+
+static const TCHAR shortmonths[]	= TEXT("JanFebMarAprMayJunJulAugSepOctNovDec");
 
 #define MODE_NORMAL			0
 #define MODE_PASSIVE		1
@@ -46,8 +48,7 @@ static const char CRLF[]			= "\r\n";
 #define FTP_ACCESS_CREATENEW		2 // creating new directories, store new files, append disabled. "upload"
 #define FTP_ACCESS_FULL				3 // read, write, append, delete, rename. "admin"
 
-#define TRANSMIT_BUFFER_SIZE	65536
-#define	MAX_CMDS				24
+#define TRANSMIT_BUFFER_SIZE	65536  // should be greater than 128
 
 #define	CONFIG_FILE_NAME		TEXT("fftp.cfg")
 #define	CONFIG_SECTION_NAME		TEXT("ftpconfig")
@@ -100,6 +101,8 @@ BOOL WINAPI ftpSYST(IN PFTPCONTEXT context, IN const char *params);
 BOOL WINAPI ftpFEAT(IN PFTPCONTEXT context, IN const char *params);
 BOOL WINAPI ftpRNFR(IN PFTPCONTEXT context, IN const char *params);
 BOOL WINAPI ftpRNTO(IN PFTPCONTEXT context, IN const char *params);
+BOOL WINAPI ftpOPTS(IN PFTPCONTEXT context, IN const char *params);
+BOOL WINAPI ftpMLSD(IN PFTPCONTEXT context, IN const char *params);
 
 typedef struct _FTP_CONFIG {
 	ULONG	Port;
@@ -109,20 +112,24 @@ typedef struct _FTP_CONFIG {
 	SOCKET	ListeningSocket; // OUT
 } FTP_CONFIG, *PFTP_CONFIG;
 
-typedef BOOL (__stdcall *FTPROUTINE) (
+typedef BOOL (WINAPI *FTPROUTINE) (
 	IN PFTPCONTEXT	context,
 	IN const char	*params);
+
+#define	MAX_CMDS 26
 
 static const char *ftpcmds[MAX_CMDS] = {
 	"USER", "QUIT", "NOOP", "PWD",  "TYPE", "PORT", "LIST", "CDUP",
 	"CWD",  "RETR", "ABOR", "DELE", "PASV", "PASS", "REST", "SIZE",
-	"MKD",  "RMD",  "STOR", "SYST", "FEAT", "APPE", "RNFR", "RNTO"
+	"MKD",  "RMD",  "STOR", "SYST", "FEAT", "APPE", "RNFR", "RNTO",
+	"OPTS", "MLSD"
 };
 
 static const FTPROUTINE ftpprocs[MAX_CMDS] = {
 	ftpUSER, ftpQUIT, ftpNOOP, ftpPWD, ftpTYPE, ftpPORT, ftpLIST, ftpCDUP,
 	ftpCWD, ftpRETR, ftpABOR, ftpDELE, ftpPASV, ftpPASS, ftpREST, ftpSIZE,
-	ftpMKD, ftpRMD, ftpSTOR, ftpSYST, ftpFEAT, ftpAPPE, ftpRNFR, ftpRNTO
+	ftpMKD, ftpRMD, ftpSTOR, ftpSYST, ftpFEAT, ftpAPPE, ftpRNFR, ftpRNTO,
+	ftpOPTS, ftpMLSD
 };
 
 DWORD WINAPI ftpmain(PFTP_CONFIG p);

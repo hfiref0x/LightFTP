@@ -13,11 +13,11 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Source Files\rtl">
-      <UniqueIdentifier>{972e5fc4-b645-4ff6-93ac-36c11a3b5a01}</UniqueIdentifier>
+    <Filter Include="Source Files\rtl_c">
+      <UniqueIdentifier>{81073c34-4db9-483c-a154-1e9e30a78992}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\rtl">
-      <UniqueIdentifier>{ed646e16-34bd-4bfa-b377-1f0a59be6fa9}</UniqueIdentifier>
+    <Filter Include="Header Files\rtl_h">
+      <UniqueIdentifier>{96e240ff-d46f-4802-bd54-6836c2bbf393}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -28,43 +28,43 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="minirtl\_strcat.c">
-      <Filter>Source Files\rtl</Filter>
+      <Filter>Source Files\rtl_c</Filter>
     </ClCompile>
     <ClCompile Include="minirtl\_strcmp.c">
-      <Filter>Source Files\rtl</Filter>
+      <Filter>Source Files\rtl_c</Filter>
     </ClCompile>
     <ClCompile Include="minirtl\_strcmpi.c">
-      <Filter>Source Files\rtl</Filter>
+      <Filter>Source Files\rtl_c</Filter>
     </ClCompile>
     <ClCompile Include="minirtl\_strcpy.c">
-      <Filter>Source Files\rtl</Filter>
+      <Filter>Source Files\rtl_c</Filter>
     </ClCompile>
     <ClCompile Include="minirtl\_strend.c">
-      <Filter>Source Files\rtl</Filter>
+      <Filter>Source Files\rtl_c</Filter>
     </ClCompile>
     <ClCompile Include="minirtl\_strlen.c">
-      <Filter>Source Files\rtl</Filter>
+      <Filter>Source Files\rtl_c</Filter>
     </ClCompile>
     <ClCompile Include="minirtl\_strncmpi.c">
-      <Filter>Source Files\rtl</Filter>
+      <Filter>Source Files\rtl_c</Filter>
     </ClCompile>
     <ClCompile Include="minirtl\_strncpy.c">
-      <Filter>Source Files\rtl</Filter>
-    </ClCompile>
-    <ClCompile Include="minirtl\strtou64.c">
-      <Filter>Source Files\rtl</Filter>
-    </ClCompile>
-    <ClCompile Include="minirtl\strtoul.c">
-      <Filter>Source Files\rtl</Filter>
-    </ClCompile>
-    <ClCompile Include="minirtl\u64tostr.c">
-      <Filter>Source Files\rtl</Filter>
-    </ClCompile>
-    <ClCompile Include="minirtl\ultostr.c">
-      <Filter>Source Files\rtl</Filter>
+      <Filter>Source Files\rtl_c</Filter>
     </ClCompile>
     <ClCompile Include="minirtl\cmdline.c">
-      <Filter>Source Files\rtl</Filter>
+      <Filter>Source Files\rtl_c</Filter>
+    </ClCompile>
+    <ClCompile Include="minirtl\strtou64.c">
+      <Filter>Source Files\rtl_c</Filter>
+    </ClCompile>
+    <ClCompile Include="minirtl\strtoul.c">
+      <Filter>Source Files\rtl_c</Filter>
+    </ClCompile>
+    <ClCompile Include="minirtl\u64tostr.c">
+      <Filter>Source Files\rtl_c</Filter>
+    </ClCompile>
+    <ClCompile Include="minirtl\ultostr.c">
+      <Filter>Source Files\rtl_c</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -72,13 +72,13 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="minirtl\cmdline.h">
-      <Filter>Header Files\rtl</Filter>
+      <Filter>Header Files\rtl_h</Filter>
     </ClInclude>
     <ClInclude Include="minirtl\minirtl.h">
-      <Filter>Header Files\rtl</Filter>
+      <Filter>Header Files\rtl_h</Filter>
     </ClInclude>
     <ClInclude Include="minirtl\rtltypes.h">
-      <Filter>Header Files\rtl</Filter>
+      <Filter>Header Files\rtl_h</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

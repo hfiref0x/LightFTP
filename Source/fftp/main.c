@@ -1,8 +1,13 @@
+
 #include <windows.h>
 #include <process.h>
 #include "minirtl\minirtl.h"
 #include "minirtl\cmdline.h"
 #include "ftpserv.h"
+
+#if !defined UNICODE
+#error ANSI build is not supported
+#endif
 
 DWORD		dwMainThreadId = 0;
 HANDLE		th = NULL;
@@ -61,29 +66,24 @@ void main()
 	}
 
 	RtlSecureZeroMemory(&textkeybuf, sizeof(textkeybuf));
-	GetPrivateProfileString(CONFIG_SECTION_NAME, TEXT("interface"), NULL, 
-		textkeybuf, sizeof(textkeybuf)/sizeof(TCHAR), ConfigFilePath);
-
+	GetPrivateProfileString(CONFIG_SECTION_NAME, TEXT("interface"), NULL, textkeybuf, sizeof(textkeybuf)/sizeof(TCHAR), ConfigFilePath);
 	WideCharToMultiByte(CP_UTF8, 0, textkeybuf, MAX_PATH, logbuf, MAX_PATH, NULL, NULL);
 	cfg.NetInterface = inet_addr(logbuf);
 
 	RtlSecureZeroMemory(&textkeybuf, sizeof(textkeybuf));
-	GetPrivateProfileString(CONFIG_SECTION_NAME, TEXT("port"), NULL, 
-		textkeybuf, sizeof(textkeybuf)/sizeof(TCHAR), ConfigFilePath);
+	GetPrivateProfileString(CONFIG_SECTION_NAME, TEXT("port"), NULL, textkeybuf, sizeof(textkeybuf)/sizeof(TCHAR), ConfigFilePath);
 	cfg.Port = strtoul(textkeybuf);
 	if ( cfg.Port == 0 )
 		cfg.Port = DEFAULT_FTP_PORT;
 
 	RtlSecureZeroMemory(&textkeybuf, sizeof(textkeybuf));
-	GetPrivateProfileString(CONFIG_SECTION_NAME, TEXT("maxusers"), NULL, 
-		textkeybuf, sizeof(textkeybuf)/sizeof(TCHAR), ConfigFilePath);
+	GetPrivateProfileString(CONFIG_SECTION_NAME, TEXT("maxusers"), NULL, textkeybuf, sizeof(textkeybuf)/sizeof(TCHAR), ConfigFilePath);
 	cfg.MaxUsers = strtoul(textkeybuf);
 	if ( cfg.MaxUsers == 0 )
 		cfg.MaxUsers = 1;
 
 	RtlSecureZeroMemory(&textkeybuf, sizeof(textkeybuf));
-	GetPrivateProfileString(CONFIG_SECTION_NAME, TEXT("logfilepath"), NULL, 
-		textkeybuf, sizeof(textkeybuf)/sizeof(TCHAR), ConfigFilePath);
+	GetPrivateProfileString(CONFIG_SECTION_NAME, TEXT("logfilepath"), NULL, textkeybuf, sizeof(textkeybuf)/sizeof(TCHAR), ConfigFilePath);
 
 	cfg.LogHandle = NULL;
 	if ( textkeybuf[0] != 0 ) {
@@ -93,8 +93,7 @@ void main()
 		_strcat(textkeybuf, TEXT("\\ftplog-"));
 		u64tostr(UT.QuadPart, _strend(textkeybuf));
 		_strcat(textkeybuf, TEXT(".txt"));
-		cfg.LogHandle = CreateFile(textkeybuf, FILE_READ_DATA | FILE_WRITE_DATA | SYNCHRONIZE, 
-			FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		cfg.LogHandle = CreateFile(textkeybuf, FILE_READ_DATA | FILE_WRITE_DATA | SYNCHRONIZE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	}
 
 	writeconsolestr(cfg.LogHandle, "Config file : ");
