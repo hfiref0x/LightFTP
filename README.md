@@ -34,7 +34,7 @@ Example of configuration file can be found in Compiled directory.
 
 * LightFTP comes with full source code, written in C.
 * In order to build from source in Windows you need Microsoft Visual Studio 2013/2015 and later versions. Source files (including VS project) located in Source/Windows directory.
-* In order to build from source in Linux you need GCC C compiler, run make command in the Release directory. Sources files (including makefile) located in Source/Other directory.
+* In order to build from source in Linux you need GCC C compiler, run make command in the Release directory. Source files (including makefile) located in Source/Other directory.
 
 # Authors
 
