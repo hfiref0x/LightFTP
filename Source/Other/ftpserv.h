@@ -2,6 +2,9 @@
  * ftpserv.h
  *
  *  Created on: Aug 20, 2016
+ *
+ *  Modified on: Apr 19, 2017
+ *
  *      Author: lightftp
  */
 
@@ -136,6 +139,7 @@ static const char error550[]		= "550 File or directory unavailable.\r\n";
 static const char error550_r[]		= "550 Permission denied.\r\n";
 static const char error550_a[]		= "550 Data channel was closed by ABOR command from client.\r\n";
 static const char error550_t[]		= "550 Another action is in progress, use ABOR command first.\r\n";
+static const char error550_m[]		= "550 Insufficient resources.\r\n";
 static const char interm125[]		= "125 Data connection already open; Transfer starting.\r\n";
 static const char interm150[]		= "150 File status okay; about to open data connection.\r\n";
 static const char interm350[]		= "350 REST supported. Ready to resume at byte offset ";

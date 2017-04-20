@@ -1,4 +1,4 @@
-Copyright (c) 2007 - 2016, LightFTP authors
+Copyright (c) LightFTP Project authors
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:

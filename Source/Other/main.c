@@ -1,7 +1,10 @@
 /*
  * main.c
  *
- *  Created on: Aug 21, 2016
+ *  Created on: Aug 20, 2016
+ *
+ *  Modified on: Apr 19, 2017
+ *
  *      Author: lightftp
  */
 
@@ -129,6 +132,7 @@ int main(int argc, char *argv[])
 
 		do {
 			c = getc(stdin);
+			sleep(1);
 		} while ((c != 'q') && (c != 'Q'));
 
 		break;

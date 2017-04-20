@@ -1,15 +1,20 @@
 /*
  * ftpserv.c
  *
- *  Created on: Aug 21, 2016
+ *  Created on: Aug 20, 2016
+ *
+ *  Modified on: Apr 19, 2017
+ *
  *      Author: lightftp
  */
+
 #define __USE_GNU
 #define _GNU_SOURCE
 
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <linux/limits.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -799,22 +804,30 @@ int ftpCWD(PFTPCONTEXT context, const char *params)
 
 void *retr_thread(PFTPCONTEXT context)
 {
-	SOCKET			clientsocket;
-	int				sent_ok, f;
-	off_t			offset;
-	ssize_t			sz;
-	char			*buffer;
+	volatile SOCKET		clientsocket;
+	int					sent_ok, f;
+	off_t				offset;
+	ssize_t				sz, sz_total;
+	char				*buffer = NULL;
+	struct timespec		t;
+	signed long long	lt0, lt1, dtx;
 
 	pthread_mutex_lock(&context->MTLock);
 	pthread_cleanup_push(cleanup_handler, context);
 
 	sent_ok = 0;
+	sz_total = 0;
 	f = -1;
-	buffer = NULL;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	lt0 = t.tv_sec*1e9 + t.tv_nsec;
 
-	clientsocket = create_datasocket(context);
-	while (clientsocket != INVALID_SOCKET)
+	buffer = malloc(TRANSMIT_BUFFER_SIZE);
+	while (buffer != NULL)
 	{
+        clientsocket = create_datasocket(context);
+        if (clientsocket == INVALID_SOCKET)
+            break;
+
 		f = open(context->GPBuffer, O_RDONLY);
 		context->File = f;
 		if (f == -1)
@@ -824,12 +837,12 @@ void *retr_thread(PFTPCONTEXT context)
 		if (offset != context->RestPoint)
 			break;
 
-		buffer = malloc(TRANSMIT_BUFFER_SIZE);
-
 		while ( context->WorkerThreadAbort == 0 ) {
 			sz = read(f, buffer, TRANSMIT_BUFFER_SIZE);
 			if (sz <= 0)
 				break;
+
+			sz_total += sz;
 
 			if (send(clientsocket, buffer, sz, MSG_NOSIGNAL) == sz)
 				sent_ok = 1;
@@ -843,8 +856,8 @@ void *retr_thread(PFTPCONTEXT context)
 		break;
 	}
 
-	if (buffer != NULL)
-		free(buffer);
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	lt1 = t.tv_sec*1e9 + t.tv_nsec;
 
 	if (f != -1)
 		close(f);
@@ -854,7 +867,15 @@ void *retr_thread(PFTPCONTEXT context)
 	if (clientsocket != INVALID_SOCKET)
 		close(clientsocket);
 
-	writelogentry(context, " RETR complete", NULL);
+	/* calculating performance */
+	dtx = lt1 - lt0;
+
+    if (buffer != NULL) {
+	    sprintf(buffer,  " RETR complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
+	    	sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
+        writelogentry(context, buffer, NULL);
+        free(buffer);
+    }
 
 	if (clientsocket == INVALID_SOCKET) {
 		sendstring(context->ControlSocket, error451);
@@ -1170,30 +1191,41 @@ int ftpRMD(PFTPCONTEXT context, const char *params)
 
 void *stor_thread(PFTPCONTEXT context)
 {
-	SOCKET			clientsocket;
-	int				f = -1;
-	ssize_t			sz;
-	char			*buffer;
+	SOCKET				clientsocket;
+	int					f;
+	ssize_t				sz, sz_total;
+	char				*buffer;
+	struct timespec		t;
+	signed long long	lt0, lt1, dtx;
 
 	pthread_mutex_lock(&context->MTLock);
 	pthread_cleanup_push(cleanup_handler, context);
 
+	f = -1;
+	sz_total = 0;
 	buffer = NULL;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	lt0 = t.tv_sec*1e9 + t.tv_nsec;
 
 	clientsocket = create_datasocket(context);
 	while (clientsocket != INVALID_SOCKET)
 	{
+		buffer = malloc(TRANSMIT_BUFFER_SIZE);
+		if (buffer == NULL)
+			break;
+
 		f = open(context->GPBuffer, O_CREAT | O_RDWR | O_EXCL, S_IRWXU | S_IRGRP | S_IROTH);
 		context->File = f;
 		if (f == -1)
 			break;
 
-		buffer = malloc(TRANSMIT_BUFFER_SIZE);
-
 		while ( context->WorkerThreadAbort == 0 ) {
 			sz = recv(clientsocket, buffer, TRANSMIT_BUFFER_SIZE, 0);
 			if (sz > 0)
+			{
+				sz_total += sz;
 				write(f, buffer, sz);
+			}
 			else
 				break;
 		}
@@ -1201,8 +1233,8 @@ void *stor_thread(PFTPCONTEXT context)
 		break;
 	}
 
-	if (buffer != NULL)
-		free(buffer);
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	lt1 = t.tv_sec*1e9 + t.tv_nsec;
 
 	if (f != -1)
 		close(f);
@@ -1212,7 +1244,15 @@ void *stor_thread(PFTPCONTEXT context)
 	if (clientsocket != INVALID_SOCKET)
 		close(clientsocket);
 
-	writelogentry(context, " STOR complete", NULL);
+	/* calculating performance */
+	if (buffer != NULL)
+	{
+		dtx = lt1 - lt0;
+		sprintf(buffer,  " STOR complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
+				sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
+		writelogentry(context, buffer, NULL);
+		free(buffer);
+	}
 
 	if (clientsocket == INVALID_SOCKET) {
 		sendstring(context->ControlSocket, error451);
@@ -1296,12 +1336,10 @@ void *append_thread(PFTPCONTEXT context)
 	SOCKET			clientsocket;
 	int				f = -1;
 	ssize_t			sz;
-	char			*buffer;
+	char			*buffer = NULL;
 
 	pthread_mutex_lock(&context->MTLock);
 	pthread_cleanup_push(cleanup_handler, context);
-
-	buffer = NULL;
 
 	clientsocket = create_datasocket(context);
 	while (clientsocket != INVALID_SOCKET)
@@ -1313,6 +1351,8 @@ void *append_thread(PFTPCONTEXT context)
 
 		lseek(f, 0, SEEK_END);
 		buffer = malloc(TRANSMIT_BUFFER_SIZE);
+		if (buffer == NULL)
+			break;
 
 		while ( context->WorkerThreadAbort == 0 ) {
 			sz = recv(clientsocket, buffer, TRANSMIT_BUFFER_SIZE, 0);
@@ -1450,6 +1490,8 @@ int ftpRNTO(PFTPCONTEXT context, const char *params)
 		return sendstring(context->ControlSocket, error501);
 
 	_text = malloc(PATH_MAX * 4);
+	if (_text == NULL)
+		return sendstring(context->ControlSocket, error550_m);
 
 	if (finalpath(
 			context->RootDir,
@@ -1753,12 +1795,12 @@ void *ftp_client_thread(SOCKET *s)
 
 			cmd = &rcvbuf[i];
 
-			while ((rcvbuf[i] != ' ') && (rcvbuf[i] != 0))
+			while ((rcvbuf[i] != 0) && (rcvbuf[i] != ' '))
 				i++;
 
 			cmdlen = &rcvbuf[i] - cmd;
 
-			while ((rcvbuf[i] == ' ') && (rcvbuf[i] != 0))
+			while (rcvbuf[i] == ' ')
 				i++;
 
 			if (rcvbuf[i] == 0)
@@ -1812,6 +1854,9 @@ void *ftpmain(void *p)
 	if ( ftpsocket == INVALID_SOCKET )
 		return 0;
 
+	rv = 1;
+	setsockopt(ftpsocket, SOL_SOCKET, SO_REUSEADDR, &rv, sizeof(rv));
+
 	scb = (SOCKET *)malloc(sizeof(SOCKET)*g_cfg.MaxUsers);
 	if ( scb == NULL ) {
 		close(ftpsocket);
@@ -1827,6 +1872,7 @@ void *ftpmain(void *p)
 	laddr.sin_addr.s_addr = g_cfg.BindToInterface;
 	socketret = bind(ftpsocket, (struct sockaddr *)&laddr, sizeof(laddr));
 	if  ( socketret != 0 ) {
+		writelogentry(NULL, "Failed to start server. Can not bind to address.", NULL);
 		free(scb);
 		close(ftpsocket);
 		return 0;
