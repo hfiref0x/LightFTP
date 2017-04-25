@@ -7,6 +7,7 @@
 FTP_CONFIG			g_cfg;
 HANDLE				g_LogHandle;
 LONG				g_NewID = 0;
+ULONG				g_NextPort = 0;
 
 BOOL sendstring(SOCKET s, const char *Buffer)
 {
@@ -21,7 +22,7 @@ BOOL writeconsolestr(const char *Buffer)
 
 	if ( (g_LogHandle != NULL) && (g_LogHandle != INVALID_HANDLE_VALUE) )
 		WriteFile(g_LogHandle, Buffer, l, &bytesIO, NULL);
-	
+
 	return WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), Buffer, l, &bytesIO, NULL);
 }
 
@@ -863,7 +864,7 @@ BOOL  ftpPASV(IN PFTPCONTEXT context, IN const char *params)
 		laddr.sin_family = AF_INET;
 
 		laddr.sin_port = htons((u_short)(g_cfg.PasvPortBase +
-			(GetTickCount64() % (g_cfg.PasvPortMax-g_cfg.PasvPortBase))));
+			(InterlockedIncrement(&g_NewID) % (g_cfg.PasvPortMax-g_cfg.PasvPortBase))));
 
 		laddr.sin_addr.S_un.S_addr = context->ServerIPv4;
 		socketret = bind(datasocket, (struct sockaddr *)&laddr, sizeof(laddr));

@@ -106,6 +106,7 @@
       <AssemblerOutput>All</AssemblerOutput>
       <BrowseInformation>true</BrowseInformation>
       <CompileAs>CompileAsC</CompileAs>
+      <DisableSpecificWarnings>6258</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -128,6 +129,7 @@
       <AssemblerOutput>All</AssemblerOutput>
       <BrowseInformation>true</BrowseInformation>
       <CompileAs>CompileAsC</CompileAs>
+      <DisableSpecificWarnings>6258</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -164,6 +166,7 @@
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <StringPooling>true</StringPooling>
       <ControlFlowGuard>Guard</ControlFlowGuard>
+      <DisableSpecificWarnings>6258</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>false</GenerateDebugInformation>
@@ -204,6 +207,7 @@
       <ControlFlowGuard>Guard</ControlFlowGuard>
       <SuppressStartupBanner>false</SuppressStartupBanner>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <DisableSpecificWarnings>6258</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>false</GenerateDebugInformation>
