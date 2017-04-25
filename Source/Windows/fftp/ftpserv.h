@@ -2,8 +2,6 @@
 #define _FTPSERV_
 #pragma comment(lib, "ws2_32.lib")
 
-#pragma warning(disable: 6258) //using TerminateThread does not allow proper thread clean up.
-
 static const char success200[]		= "200 Command okay.\r\n";
 static const char success200_1[]	= "200 Type set to A.\r\n";
 static const char success200_2[]	= "200 Type set to I.\r\n";
@@ -51,7 +49,7 @@ static const TCHAR shortmonths[]	= TEXT("JanFebMarAprMayJunJulAugSepOctNovDec");
 #define TRANSMIT_BUFFER_SIZE	65536  // should be greater than 128
 
 #define	CONFIG_FILE_NAME		TEXT("fftp.cfg")
-#define	CONFIG_SECTION_NAME		TEXT("ftpconfig")
+#define	CONFIG_SECTION_NAME		"ftpconfig"
 #define	DEFAULT_FTP_PORT		21
 
 typedef struct	_FTPCONTEXT {
@@ -59,7 +57,6 @@ typedef struct	_FTPCONTEXT {
 	SOCKET				DataSocket;
 	HANDLE				WorkerThread;
 	HANDLE				FileHandle;
-	HANDLE				LogHandle;
 	ULONG				ServerIPv4;
 	ULONG				ClientIPv4;
 	ULONG				DataIPv4;
@@ -70,49 +67,53 @@ typedef struct	_FTPCONTEXT {
 	BOOL				Stop;
 	LARGE_INTEGER		RestPoint;
 	CRITICAL_SECTION	MTLock;
+	CHAR				UserName[256];
 	CHAR				CurrentDir[MAX_PATH];
 	CHAR				RootDir[MAX_PATH];
 	TCHAR				RenFrom[MAX_PATH];
-	TCHAR				UserName[MAX_PATH];
 	TCHAR				TextBuffer[MAX_PATH*2];
 } FTPCONTEXT, *PFTPCONTEXT;
 
-BOOL WINAPI ftpUSER(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpQUIT(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpNOOP(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpPWD(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpTYPE(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpPORT(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpLIST(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpAPPE(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpCDUP(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpCWD(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpRETR(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpABOR(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpDELE(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpPASV(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpPASS(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpREST(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpSIZE(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpMKD(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpRMD(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpSTOR(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpSYST(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpFEAT(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpRNFR(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpRNTO(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpOPTS(IN PFTPCONTEXT context, IN const char *params);
-BOOL WINAPI ftpMLSD(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpUSER(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpQUIT(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpNOOP(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpPWD(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpTYPE(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpPORT(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpLIST(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpAPPE(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpCDUP(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpCWD(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpRETR(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpABOR(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpDELE(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpPASV(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpPASS(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpREST(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpSIZE(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpMKD(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpRMD(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpSTOR(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpSYST(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpFEAT(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpRNFR(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpRNTO(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpOPTS(IN PFTPCONTEXT context, IN const char *params);
+BOOL ftpMLSD(IN PFTPCONTEXT context, IN const char *params);
 
 typedef struct _FTP_CONFIG {
+	PCHAR	ConfigFile;
 	ULONG	Port;
-	ULONG	NetInterface;
+	ULONG	BindToInterface;
+	ULONG	ExternalInterface;
+	ULONG	LocalIPMask;
+	ULONG	PasvPortBase;
+	ULONG	PasvPortMax;
 	ULONG	MaxUsers;
-	HANDLE	LogHandle;
 	SOCKET	ListeningSocket; // OUT
 } FTP_CONFIG, *PFTP_CONFIG;
 
-typedef BOOL (WINAPI *FTPROUTINE) (
+typedef BOOL (*FTPROUTINE) (
 	IN PFTPCONTEXT	context,
 	IN const char	*params);
 
@@ -132,7 +133,11 @@ static const FTPROUTINE ftpprocs[MAX_CMDS] = {
 	ftpOPTS, ftpMLSD
 };
 
-DWORD WINAPI ftpmain(PFTP_CONFIG p);
-BOOL writeconsolestr(HANDLE LogHandle, const char *Buffer);
+FTP_CONFIG	g_cfg;
+HANDLE		g_LogHandle;
+
+DWORD WINAPI ftpmain(LPVOID p);
+BOOL writeconsolestr(const char *Buffer);
+int ParseConfig(const char *pcfg, const char *section_name, const char *key_name, char *value, unsigned long value_size_max);
 
 #endif /* _FTPSERV_ */

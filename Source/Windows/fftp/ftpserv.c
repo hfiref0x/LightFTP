@@ -4,37 +4,28 @@
 #include "minirtl\cmdline.h"
 #include "ftpserv.h"
 
-static HANDLE	g_LogHandle = NULL;
-LONG			g_NewID = 0;
+FTP_CONFIG			g_cfg;
+HANDLE				g_LogHandle;
+LONG				g_NewID = 0;
 
-BOOL sendstring(
-	SOCKET s, 
-	const char *Buffer
-	)
+BOOL sendstring(SOCKET s, const char *Buffer)
 {
 	return ( send(s, Buffer, (int)_strlen_a(Buffer), 0) >= 0 );
 }
 
-BOOL writeconsolestr(
-	HANDLE LogHandle, 
-	const char *Buffer
-	)
+BOOL writeconsolestr(const char *Buffer)
 {
 	DWORD	bytesIO, l;
 
 	l = (DWORD)_strlen_a(Buffer);
 
-	if ( (LogHandle != NULL) && (LogHandle != INVALID_HANDLE_VALUE) )
-		WriteFile(LogHandle, Buffer, l, &bytesIO, NULL);
+	if ( (g_LogHandle != NULL) && (g_LogHandle != INVALID_HANDLE_VALUE) )
+		WriteFile(g_LogHandle, Buffer, l, &bytesIO, NULL);
 	
 	return WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), Buffer, l, &bytesIO, NULL);
 }
 
-BOOL writelogentry(
-	PFTPCONTEXT context, 
-	char *logtext1, 
-	char *logtext2
-	)
+BOOL writelogentry(PFTPCONTEXT context, char *logtext1, char *logtext2)
 {
 	char		cvbuf[32], textbuf[MAX_PATH*2];
 	SYSTEMTIME	tm;
@@ -79,12 +70,10 @@ BOOL writelogentry(
 	_strcat_a(textbuf, logtext2);
 	_strcat_a(textbuf, CRLF);
 
-	return writeconsolestr(context->LogHandle, textbuf);
+	return writeconsolestr(textbuf);
 }
 
-void unixpath(
-	char *s
-	)
+void unixpath(char *s)
 {
 	while ( *s != 0 ) {
 		if ( *s == '\\' )
@@ -93,9 +82,7 @@ void unixpath(
 	}
 }
 
-void ntpath(
-	char *s
-	)
+void ntpath(char *s)
 {
 	while ( *s != 0 ) {
 		if ( *s == '/' )
@@ -104,9 +91,7 @@ void ntpath(
 	}
 }
 
-void nolastslash(
-	char *s
-	)
+void nolastslash(char *s)
 {
 	if ( s == NULL )
 		return;
@@ -124,9 +109,7 @@ void nolastslash(
 		*s = 0;
 }
 
-void addlastslash(
-	char *s
-	)
+void addlastslash(char *s)
 {
 	if ( s == NULL )
 		return;
@@ -147,9 +130,7 @@ void addlastslash(
 	s[2] = 0;
 }
 
-void formatpath( // removes multiple slashes, dots
-	char *s
-	) 
+void formatpath(char *s) // removes multiple slashes, dots
 {
 	char	*d = s, *p = s;
 
@@ -197,9 +178,7 @@ void formatpath( // removes multiple slashes, dots
 	*d = 0;
 }
 
-void filepath(
-	char *s
-	)
+void filepath(char *s)
 {
 	char	*p = s;
 
@@ -214,12 +193,7 @@ void filepath(
 	*p = 0;
 }
 
-void finalpath(
-	LPCSTR RootDir, 
-	LPCSTR CurrentDir, 
-	LPSTR Params, 
-	LPSTR Buffer
-	)
+void finalpath(LPCSTR RootDir, LPCSTR CurrentDir, LPSTR Params, LPSTR Buffer)
 {
 	char	*root = Buffer;
 
@@ -246,10 +220,7 @@ void finalpath(
 	formatpath(Buffer);
 }
 
-BOOL list_sub(
-	SOCKET s, 
-	WIN32_FIND_DATA *fdata
-	)
+BOOL list_sub(SOCKET s, WIN32_FIND_DATA *fdata)
 {
 	TCHAR			textbuf[MAX_PATH];
 	CHAR			sendbuf[MAX_PATH];
@@ -319,10 +290,7 @@ BOOL list_sub(
 	return sendstring(s, CRLF);
 }
 
-BOOL mlsd_sub(
-	SOCKET s, 
-	WIN32_FIND_DATA *fdata
-	)
+BOOL mlsd_sub(SOCKET s, WIN32_FIND_DATA *fdata)
 {
 	TCHAR			textbuf[MAX_PATH];
 	CHAR			sendbuf[MAX_PATH];
@@ -376,9 +344,7 @@ BOOL mlsd_sub(
 	return sendstring(s, CRLF);
 }
 
-SOCKET create_datasocket(
-	IN PFTPCONTEXT context
-	)
+SOCKET create_datasocket(IN PFTPCONTEXT context)
 {
 	SOCKET				clientsocket = INVALID_SOCKET;
 	struct sockaddr_in	laddr;
@@ -419,9 +385,7 @@ SOCKET create_datasocket(
 	return clientsocket;
 }
 
-DWORD WINAPI list_thread(
-	IN PFTPCONTEXT context
-	)
+DWORD WINAPI list_thread(IN PFTPCONTEXT context)
 {
 	SOCKET				clientsocket, control;
 	HANDLE				File;
@@ -466,9 +430,7 @@ error_exit:
 	return 0;
 }
 
-DWORD WINAPI mlsd_thread(
-	IN PFTPCONTEXT context
-	)
+DWORD WINAPI mlsd_thread(IN PFTPCONTEXT context)
 {
 	SOCKET				clientsocket, control;
 	HANDLE				File;
@@ -514,9 +476,7 @@ error_exit:
 	return 0;
 }
 
-DWORD WINAPI retr_thread(
-	IN PFTPCONTEXT context
-	)
+DWORD WINAPI retr_thread(IN PFTPCONTEXT context)
 {
 	SOCKET			clientsocket, control;
 	LPSTR			textbuf = NULL;
@@ -610,9 +570,7 @@ error_exit:
 	return 0;
 }
 
-DWORD WINAPI stor_thread(
-	IN PFTPCONTEXT context
-	)
+DWORD WINAPI stor_thread(IN PFTPCONTEXT context)
 {
 	SOCKET	clientsocket, control;
 	LPSTR	textbuf = NULL;
@@ -674,9 +632,7 @@ error_exit:
 	return 0;
 }
 
-void StopWorkerThread(
-	IN PFTPCONTEXT context
-	)
+void StopWorkerThread(IN PFTPCONTEXT context)
 {
 	if ( context->WorkerThread != NULL ) {
 		context->Stop = TRUE; // trying to stop gracefully
@@ -704,10 +660,7 @@ void StopWorkerThread(
 
 /* FTP COMMANDS BEGIN */
 
-BOOL WINAPI ftpSTOR(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL ftpSTOR(IN PFTPCONTEXT context, IN const char *params)
 {
 	HANDLE	wth;
 	DWORD	fileaccess;
@@ -755,10 +708,7 @@ BOOL WINAPI ftpSTOR(
 	return TRUE;
 }
 
-BOOL WINAPI ftpAPPE(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpAPPE(IN PFTPCONTEXT context, IN const char *params)
 {
 	HANDLE			wth;
 	LARGE_INTEGER	fptr;
@@ -802,10 +752,7 @@ BOOL WINAPI ftpAPPE(
 	return TRUE;
 }
 
-BOOL WINAPI ftpRETR(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpRETR(IN PFTPCONTEXT context, IN const char *params)
 {
 	CHAR	textbuf[MAX_PATH*3];
 	TCHAR	filename[MAX_PATH];
@@ -844,10 +791,7 @@ BOOL WINAPI ftpRETR(
 	return TRUE;
 }
 
-BOOL WINAPI ftpLIST(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpLIST(IN PFTPCONTEXT context, IN const char *params)
 {
 	WIN32_FILE_ATTRIBUTE_DATA	adata;
 	HANDLE						wth;
@@ -892,15 +836,13 @@ BOOL WINAPI ftpLIST(
 	return TRUE;
 }
 
-BOOL WINAPI ftpPASV(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpPASV(IN PFTPCONTEXT context, IN const char *params)
 {
 	SOCKET				datasocket;
 	struct sockaddr_in	laddr;
-	int					c, socketret = SOCKET_ERROR;
+	int					socketret = SOCKET_ERROR;
 	CHAR				textbuf[MAX_PATH];
+	ULONG				c;
 
 	UNREFERENCED_PARAMETER(params);
 
@@ -916,11 +858,13 @@ BOOL WINAPI ftpPASV(
 		return sendstring(context->ControlSocket, error451);
 
 	RtlSecureZeroMemory(&laddr, sizeof(laddr));
-
-	for (c = 0; c < 4; c++) {
+	for (c = g_cfg.PasvPortBase; c <= g_cfg.PasvPortMax; c++) {
 		RtlSecureZeroMemory(&laddr, sizeof(laddr));
 		laddr.sin_family = AF_INET;
-		laddr.sin_port = (GetTickCount64() & 0xff7f) + 0x4000;
+
+		laddr.sin_port = htons((u_short)(g_cfg.PasvPortBase +
+			(GetTickCount64() % (g_cfg.PasvPortMax-g_cfg.PasvPortBase))));
+
 		laddr.sin_addr.S_un.S_addr = context->ServerIPv4;
 		socketret = bind(datasocket, (struct sockaddr *)&laddr, sizeof(laddr));
 		if ( socketret == 0 )
@@ -936,7 +880,18 @@ BOOL WINAPI ftpPASV(
 		closesocket(datasocket);
 		return sendstring(context->ControlSocket, error451);
 	}
-	context->DataIPv4 = context->ServerIPv4;
+
+	if ((context->ClientIPv4 & g_cfg.LocalIPMask) == (context->ServerIPv4 & g_cfg.LocalIPMask))
+	{
+		context->DataIPv4 = context->ServerIPv4;
+		writelogentry(context, " local client.", NULL);
+	}
+	else
+	{
+		context->DataIPv4 = g_cfg.ExternalInterface;
+		writelogentry(context, " nonlocal client.", NULL);
+	}
+
 	context->DataPort = laddr.sin_port;
 	context->DataSocket = datasocket;
 	context->Mode = MODE_PASSIVE;
@@ -960,10 +915,7 @@ BOOL WINAPI ftpPASV(
 	return sendstring(context->ControlSocket, textbuf);
 }
 
-BOOL WINAPI ftpPORT(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpPORT(IN PFTPCONTEXT context, IN const char *params)
 {
 	int		c;
 	ULONG	DataIP = 0, DataP = 0;
@@ -1003,10 +955,7 @@ BOOL WINAPI ftpPORT(
 	return sendstring(context->ControlSocket, success200);
 }
 
-BOOL WINAPI ftpREST(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpREST(IN PFTPCONTEXT context, IN const char *params)
 {
 	CHAR	textbuf[MAX_PATH];
 
@@ -1023,10 +972,7 @@ BOOL WINAPI ftpREST(
 	return sendstring(context->ControlSocket, textbuf);
 }
 
-BOOL WINAPI ftpCWD(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpCWD(IN PFTPCONTEXT context, IN const char *params)
 {
 	WIN32_FILE_ATTRIBUTE_DATA	adata;
 	CHAR	textbuf[MAX_PATH*3];
@@ -1063,10 +1009,7 @@ BOOL WINAPI ftpCWD(
 	return sendstring(context->ControlSocket, success250);
 }
 
-BOOL WINAPI ftpDELE(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpDELE(IN PFTPCONTEXT context, IN const char *params)
 {
 	CHAR	textbuf[MAX_PATH*3];
 	TCHAR	filename[MAX_PATH];
@@ -1095,10 +1038,7 @@ BOOL WINAPI ftpDELE(
 	return TRUE;
 }
 
-BOOL WINAPI ftpRMD(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpRMD(IN PFTPCONTEXT context, IN const char *params)
 {
 	CHAR	textbuf[MAX_PATH*3];
 	TCHAR	filename[MAX_PATH];
@@ -1126,10 +1066,7 @@ BOOL WINAPI ftpRMD(
 	return TRUE;
 }
 
-BOOL WINAPI ftpMKD(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpMKD(IN PFTPCONTEXT context, IN const char *params)
 {
 	CHAR	textbuf[MAX_PATH*3];
 	TCHAR	filename[MAX_PATH];
@@ -1157,10 +1094,7 @@ BOOL WINAPI ftpMKD(
 	return TRUE;
 }
 
-BOOL WINAPI ftpSIZE(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpSIZE(IN PFTPCONTEXT context, IN const char *params)
 {
 	WIN32_FILE_ATTRIBUTE_DATA	adata;
 	ULARGE_INTEGER				sz;
@@ -1193,10 +1127,7 @@ BOOL WINAPI ftpSIZE(
 	return TRUE;
 }
 
-BOOL WINAPI ftpUSER(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpUSER(IN PFTPCONTEXT context, IN const char *params)
 {
 	CHAR	textbuf[MAX_PATH*3];
 
@@ -1204,9 +1135,7 @@ BOOL WINAPI ftpUSER(
 		return sendstring(context->ControlSocket, error501);
 
 	context->Access = FTP_ACCESS_NOT_LOGGED_IN;
-
-	if (MultiByteToWideChar(CP_UTF8, 0, params, MAX_PATH, context->UserName, MAX_PATH) <= 0)
-		context->UserName[0] = 0;
+	_strncpy_a(context->UserName, 256, params, 256);
 
 	writelogentry(context, " USER: ", (char *)params);
 
@@ -1216,10 +1145,7 @@ BOOL WINAPI ftpUSER(
 	return sendstring(context->ControlSocket, textbuf);
 }
 
-BOOL WINAPI ftpQUIT(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpQUIT(IN PFTPCONTEXT context, IN const char *params)
 {
 	UNREFERENCED_PARAMETER(params);
 
@@ -1228,91 +1154,72 @@ BOOL WINAPI ftpQUIT(
 	return FALSE;
 }
 
-BOOL WINAPI ftpNOOP(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpNOOP(IN PFTPCONTEXT context, IN const char *params)
 {
 	UNREFERENCED_PARAMETER(params);
 
 	return sendstring(context->ControlSocket, success200);
 }
 
-BOOL WINAPI ftpPASS(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpPASS(IN PFTPCONTEXT context, IN const char *params)
 {
-	TCHAR	ConfigFilePath[MAX_PATH+16], pswd[64], temptext[MAX_PATH];
-	DWORD	cch, xtrue = TRUE;
+    BOOL	cond = FALSE, found = FALSE;
+    CHAR	temptext[256];
 
 	if ( params == NULL )
 		return sendstring(context->ControlSocket, error501);
 
-	RtlSecureZeroMemory(ConfigFilePath, sizeof(ConfigFilePath));
-	GetCommandLineParam(GetCommandLine(), 1, ConfigFilePath, MAX_PATH, NULL);
-	if ( ConfigFilePath[0] == 0 ) {
-		GetCommandLineParam(GetCommandLine(), 0, ConfigFilePath, MAX_PATH, NULL);
-		ExtractFilePath(ConfigFilePath, ConfigFilePath);
-		_strcat(ConfigFilePath, CONFIG_FILE_NAME);
-	}
-
-	RtlSecureZeroMemory(pswd, sizeof(pswd));
-	if ( GetPrivateProfileString(context->UserName, TEXT("pswd"), NULL, pswd, sizeof(pswd)/sizeof(TCHAR), ConfigFilePath) == 0 )
+	RtlSecureZeroMemory(temptext, sizeof(temptext));
+	if (!ParseConfig(g_cfg.ConfigFile, context->UserName, "pswd", temptext, 256))
 		return sendstring(context->ControlSocket, error530_r);
 
-	if (MultiByteToWideChar(CP_UTF8, 0, params, MAX_PATH, temptext, MAX_PATH) <= 0)
-		temptext[0] = 0;
-
-	if ( (_strcmp(pswd, temptext) != 0) && (pswd[0] != '*') )
+	if ( (_strcmp_a(temptext, params) != 0) && (temptext[0] != '*') )
 		return sendstring(context->ControlSocket, error530_r);
 	
 	RtlSecureZeroMemory(context->RootDir, sizeof(context->RootDir));
 	RtlSecureZeroMemory(temptext, sizeof(temptext));
 
-	cch = GetPrivateProfileString(context->UserName, TEXT("root"), NULL, temptext, MAX_PATH, ConfigFilePath);
-	WideCharToMultiByte(CP_UTF8, 0, temptext, cch, context->RootDir, MAX_PATH, NULL, NULL);
-
-	GetPrivateProfileString(context->UserName, TEXT("accs"), NULL, temptext, sizeof(temptext)/sizeof(TCHAR), ConfigFilePath);
+	ParseConfig(g_cfg.ConfigFile, context->UserName, "root", context->RootDir, MAX_PATH);
+	ParseConfig(g_cfg.ConfigFile, context->UserName, "accs", temptext, 256);
 
 	context->Access = FTP_ACCESS_NOT_LOGGED_IN;
-	while ( xtrue ) {
-		if ( _strcmpi(temptext, TEXT("admin")) == 0 ) {
-			context->Access = FTP_ACCESS_FULL;
-			break;
-		}
 
-		if ( _strcmpi(temptext, TEXT("upload")) == 0 ) {
-			context->Access = FTP_ACCESS_CREATENEW;
-			break;
-		}
-		
-		if ( _strcmpi(temptext, TEXT("readonly")) == 0 ) {
-			context->Access = FTP_ACCESS_READONLY;
-			break;
-		}
+    do {
+        if (_strcmpi_a(temptext, "admin") == 0) {
+            context->Access = FTP_ACCESS_FULL;
+            found = TRUE;
+            break;
+        }
 
-		return sendstring(context->ControlSocket, error530_b);
-	};
+        if (_strcmpi_a(temptext, "upload") == 0) {
+            context->Access = FTP_ACCESS_CREATENEW;
+            found = TRUE;
+            break;
+        }
+
+        if (_strcmpi_a(temptext, "readonly") == 0) {
+            context->Access = FTP_ACCESS_READONLY;
+            found = TRUE;
+            break;
+        }
+
+    } while (cond);
+
+    if (found == FALSE) 
+        return sendstring(context->ControlSocket, error530_b);
 
 	writelogentry(context, " PASS->logon successful", NULL);
 	return sendstring(context->ControlSocket, success230);
 }
 
-BOOL WINAPI ftpSYST(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpSYST(IN PFTPCONTEXT context, IN const char *params)
 {
 	UNREFERENCED_PARAMETER(params);
 
 	return sendstring(context->ControlSocket, success215);
 }
 
-BOOL WINAPI ftpFEAT(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpFEAT(IN PFTPCONTEXT context, IN const char *params)
 {
 	UNREFERENCED_PARAMETER(params);
 
@@ -1320,10 +1227,7 @@ BOOL WINAPI ftpFEAT(
 	return sendstring(context->ControlSocket, success211_end);
 }
 
-BOOL WINAPI ftpPWD(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpPWD(IN PFTPCONTEXT context, IN const char *params)
 {
 	CHAR	textbuf[MAX_PATH];
 
@@ -1342,10 +1246,7 @@ BOOL WINAPI ftpPWD(
 	return TRUE;
 }
 
-BOOL WINAPI ftpTYPE(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpTYPE(IN PFTPCONTEXT context, IN const char *params)
 {
 	if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
 		return sendstring(context->ControlSocket, error530);
@@ -1366,10 +1267,7 @@ BOOL WINAPI ftpTYPE(
 	return sendstring(context->ControlSocket, error501);
 }
 
-BOOL WINAPI ftpABOR(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpABOR(IN PFTPCONTEXT context, IN const char *params)
 {
 	UNREFERENCED_PARAMETER(params);
 
@@ -1380,10 +1278,7 @@ BOOL WINAPI ftpABOR(
 	return sendstring(context->ControlSocket, success226);
 }
 
-BOOL WINAPI ftpCDUP(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpCDUP(IN PFTPCONTEXT context, IN const char *params)
 {
 	CHAR	textbuf[MAX_PATH];
 
@@ -1403,10 +1298,7 @@ BOOL WINAPI ftpCDUP(
 	return sendstring(context->ControlSocket, success250);
 }
 
-BOOL WINAPI ftpRNFR(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpRNFR(IN PFTPCONTEXT context, IN const char *params)
 {
 	WIN32_FILE_ATTRIBUTE_DATA	adata;
 	CHAR	textbuf[MAX_PATH*3];
@@ -1435,10 +1327,7 @@ BOOL WINAPI ftpRNFR(
 	return sendstring(context->ControlSocket, interm350_ren);
 }
 
-BOOL WINAPI ftpRNTO(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpRNTO(IN PFTPCONTEXT context, IN const char *params)
 {
 	WIN32_FILE_ATTRIBUTE_DATA	adata;
 	CHAR	textbuf[MAX_PATH*3];
@@ -1468,10 +1357,7 @@ BOOL WINAPI ftpRNTO(
 	return sendstring(context->ControlSocket, success250);
 }
 
-BOOL WINAPI ftpOPTS(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpOPTS(IN PFTPCONTEXT context, IN const char *params)
 {
 	UNREFERENCED_PARAMETER(params);
 	UNREFERENCED_PARAMETER(context);
@@ -1479,10 +1365,7 @@ BOOL WINAPI ftpOPTS(
 	return sendstring(context->ControlSocket, success200);
 }
 
-BOOL WINAPI ftpMLSD(
-	IN PFTPCONTEXT context, 
-	IN const char *params
-	)
+BOOL  ftpMLSD(IN PFTPCONTEXT context, IN const char *params)
 {
 	WIN32_FILE_ATTRIBUTE_DATA	adata;
 	HANDLE						wth;
@@ -1526,9 +1409,7 @@ BOOL WINAPI ftpMLSD(
 
 /* FTP COMMANDS END */
 
-char recvchar(
-	SOCKET s
-	)
+char recvchar(SOCKET s)
 {
 	char	c = 0;
 
@@ -1538,11 +1419,7 @@ char recvchar(
 	return c;
 }
 
-int recvcmd(
-	SOCKET s, 
-	char *buffer, 
-	ULONG maxlen
-	)
+int recvcmd(SOCKET s, char *buffer, ULONG maxlen)
 {
 	char	r;
 	ULONG	c;
@@ -1576,11 +1453,7 @@ int recvcmd(
 	return 0;
 }
 
-BOOL recvparams(
-	SOCKET s, 
-	char *buffer, 
-	ULONG maxlen
-	)
+BOOL recvparams(SOCKET s, char *buffer, ULONG maxlen)
 {
 	char	r;
 	ULONG	c;
@@ -1609,9 +1482,7 @@ BOOL recvparams(
 	return FALSE;
 }
 
-DWORD WINAPI ftpthread(
-	SOCKET *s
-	)
+DWORD WINAPI ftpthread(SOCKET *s)
 {
 	struct sockaddr_in	laddr;
 	char				*p, cmd[8], params[MAX_PATH*2];
@@ -1622,7 +1493,6 @@ DWORD WINAPI ftpthread(
 	ctx.Access = FTP_ACCESS_NOT_LOGGED_IN;
 	ctx.ControlSocket = *s;
 	ctx.FileHandle = INVALID_HANDLE_VALUE;
-	ctx.LogHandle = g_LogHandle;
 
 	RtlSecureZeroMemory(&laddr, sizeof(laddr));
 	asz = sizeof(laddr);
@@ -1699,36 +1569,35 @@ error_exit:
 	return 0;
 }
 
-DWORD WINAPI ftpmain(
-	PFTP_CONFIG p
-	)
+DWORD WINAPI ftpmain(LPVOID p)
 {
 	SOCKET				ftpsocket = INVALID_SOCKET, clientsocket;
 	SOCKET				*scb = NULL;
 	struct sockaddr_in	laddr;
 	int					socketret, asz;
-	ULONG				i, maxusers = p->MaxUsers;
+	ULONG				i;
 	HANDLE				th;
 
-	p->ListeningSocket = INVALID_SOCKET;
-	writeconsolestr(NULL, success220);
+	UNREFERENCED_PARAMETER(p);
+
+	g_cfg.ListeningSocket = INVALID_SOCKET;
+	writeconsolestr(success220);
 
 	ftpsocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if ( ftpsocket == INVALID_SOCKET )
 		return 0;
 
-	scb = (SOCKET *)VirtualAlloc(NULL, sizeof(SOCKET)*maxusers, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	scb = (SOCKET *)VirtualAlloc(NULL, sizeof(SOCKET)*g_cfg.MaxUsers, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if ( scb == NULL ) {
 		closesocket(ftpsocket);
 		return 0;
 	}
 
-	g_LogHandle = p->LogHandle;
-	RtlSecureZeroMemory(scb, sizeof(SOCKET)*maxusers);
+	RtlSecureZeroMemory(scb, sizeof(SOCKET)*g_cfg.MaxUsers);
 	RtlSecureZeroMemory(&laddr, sizeof(laddr));
 	laddr.sin_family = AF_INET;
-	laddr.sin_port = htons((u_short)p->Port);
-	laddr.sin_addr.S_un.S_addr = p->NetInterface;
+	laddr.sin_port = htons((u_short)g_cfg.Port);
+	laddr.sin_addr.S_un.S_addr = g_cfg.BindToInterface;
 	socketret = bind(ftpsocket, (struct sockaddr *)&laddr, sizeof(laddr));
 	if  ( socketret != 0 ) {
 		VirtualFree(scb, 0, MEM_RELEASE);
@@ -1738,16 +1607,16 @@ DWORD WINAPI ftpmain(
 
 	socketret = listen(ftpsocket, SOMAXCONN);
 	while ( socketret == 0 ) {
-		p->ListeningSocket = ftpsocket;
+		g_cfg.ListeningSocket = ftpsocket;
 		RtlSecureZeroMemory(&laddr, sizeof(laddr));
 		asz = sizeof(laddr);
 		clientsocket = accept(ftpsocket, (struct sockaddr *)&laddr, &asz);
 		if (clientsocket == INVALID_SOCKET) {
-			if (p->ListeningSocket == INVALID_SOCKET)
+			if (g_cfg.ListeningSocket == INVALID_SOCKET)
 				break;
 		} else {
 			th = NULL;
-			for (i=0; i<maxusers; i++) {
+			for (i=0; i<g_cfg.MaxUsers; i++) {
 				if ( scb[i] == 0 ) {
 					scb[i] = clientsocket;
 					th = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)&ftpthread, &scb[i], 0, NULL);
