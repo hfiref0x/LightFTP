@@ -15,12 +15,12 @@ ftpconfig section values:
 * port = unsigned integer, connection port number, allowed range 0..65535
 * maxusers = unsigned integer, maximum number of users allowed to connect
 * interface = string, network interface to bind ftp server to, for all interfaces use "0.0.0.0"
-* logfilepath = string, path to ftp log file, e.g. "C:\TEMP" (/home/ExampleUserName/ExampleDataDirectory/fftplog for Linux), logged data append to the end of file
+* logfilepath = string, path to ftp log file, e.g. C:\TEMP (/home/ExampleUserName/ExampleDataDirectory/fftplog for Linux), logged data append to the end of file
 
 User section values:
 * pswd = string, user password, specify * as any password
 * accs = string, access right, see "Available user access rights"
-* root = string, path to user home directory.
+* root = string, path to user home directory
 
 Available user access rights:
 * admin - read, write, append, delete, rename
