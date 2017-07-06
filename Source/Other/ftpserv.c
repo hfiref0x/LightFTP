@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Apr 19, 2017
+ *  Modified on: July 06, 2017
  *
  *      Author: lightftp
  */
@@ -380,7 +380,7 @@ ssize_t writeconsolestr(const char *Buffer)
 
 int writelogentry(PFTPCONTEXT context, const char *logtext1, const char *logtext2)
 {
-	char		cvbuf[32], _text[512];
+	char		cvbuf[32], _text[PATH_MAX*4];
 	time_t		itm = time(NULL);
 	struct tm	ltm;
 
