@@ -28,7 +28,7 @@ BOOL writeconsolestr(const char *Buffer)
 
 BOOL writelogentry(PFTPCONTEXT context, char *logtext1, char *logtext2)
 {
-	char		cvbuf[32], textbuf[MAX_PATH*2];
+	char		cvbuf[32], textbuf[MAX_PATH*4];
 	SYSTEMTIME	tm;
 
 	GetLocalTime(&tm);
@@ -1582,14 +1582,16 @@ DWORD WINAPI ftpmain(LPVOID p)
 	UNREFERENCED_PARAMETER(p);
 
 	g_cfg.ListeningSocket = INVALID_SOCKET;
-	writeconsolestr(success220);
 
 	ftpsocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if ( ftpsocket == INVALID_SOCKET )
+	if (ftpsocket == INVALID_SOCKET) {
+		writeconsolestr("\r\n socket create error\r\n");
 		return 0;
+	}
 
 	scb = (SOCKET *)VirtualAlloc(NULL, sizeof(SOCKET)*g_cfg.MaxUsers, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if ( scb == NULL ) {
+		writeconsolestr("\r\n not enough free memory\r\n");
 		closesocket(ftpsocket);
 		return 0;
 	}
@@ -1601,11 +1603,13 @@ DWORD WINAPI ftpmain(LPVOID p)
 	laddr.sin_addr.S_un.S_addr = g_cfg.BindToInterface;
 	socketret = bind(ftpsocket, (struct sockaddr *)&laddr, sizeof(laddr));
 	if  ( socketret != 0 ) {
+		writeconsolestr("\r\n Failed to start server. Can not bind to address\r\n\r\n");
 		VirtualFree(scb, 0, MEM_RELEASE);
 		closesocket(ftpsocket);
 		return 0;
 	}
 
+	writeconsolestr(success220);
 	socketret = listen(ftpsocket, SOMAXCONN);
 	while ( socketret == 0 ) {
 		g_cfg.ListeningSocket = ftpsocket;

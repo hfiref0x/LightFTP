@@ -1,12 +1,12 @@
 /*
- * cfgparse.h
- *
- *  Created on: Aug 20, 2016
- *
- *  Modified on: July 06, 2017
- *
- *      Author: lightftp
- */
+* cfgparse.h
+*
+*  Created on: Aug 20, 2016
+*
+*  Modified on: July 06, 2017
+*
+*      Author: lightftp
+*/
 
 #ifndef CFGPARSE_H_
 #define CFGPARSE_H_

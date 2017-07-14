@@ -1,12 +1,12 @@
 /*
- * ftpserv.h
- *
- *  Created on: Aug 20, 2016
- *
- *  Modified on: July 06, 2017
- *
- *      Author: lightftp
- */
+* ftpserv.h
+*
+*  Created on: Aug 20, 2016
+*
+*  Modified on: July 14, 2017
+*
+*      Author: lightftp
+*/
 
 #ifndef FTPSERV_H_
 #define FTPSERV_H_

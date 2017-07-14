@@ -1,12 +1,12 @@
 /*
- * cfgparse.c
- *
- *  Created on: Aug 20, 2016
- *
- *  Modified on: July 06, 2017
- *
- *      Author: lightftp
- */
+* cfgparse.c
+*
+*  Created on: Aug 20, 2016
+*
+*  Modified on: July 14, 2017
+*
+*      Author: lightftp
+*/
 
 #include <sys/types.h>
 #include <sys/stat.h>

@@ -1,12 +1,12 @@
 /*
- * ftpserv.c
- *
- *  Created on: Aug 20, 2016
- *
- *  Modified on: July 06, 2017
- *
- *      Author: lightftp
- */
+* ftpserv.c
+*
+*  Created on: Aug 20, 2016
+*
+*  Modified on: July 14, 2017
+*
+*      Author: lightftp
+*/
 
 #define __USE_GNU
 #define _GNU_SOURCE
@@ -1848,17 +1848,19 @@ void *ftpmain(void *p)
 	uint32_t	i, asz;
 	pthread_t	th;
 
-	writelogentry(NULL, success220, NULL);
-
 	ftpsocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if ( ftpsocket == INVALID_SOCKET )
+	{
+		printf("\r\n socket create error\r\n");
 		return 0;
+	}
 
 	rv = 1;
 	setsockopt(ftpsocket, SOL_SOCKET, SO_REUSEADDR, &rv, sizeof(rv));
 
 	scb = (SOCKET *)malloc(sizeof(SOCKET)*g_cfg.MaxUsers);
 	if ( scb == NULL ) {
+		printf("\r\n not enough free memory\r\n");
 		close(ftpsocket);
 		return 0;
 	}
@@ -1872,11 +1874,13 @@ void *ftpmain(void *p)
 	laddr.sin_addr.s_addr = g_cfg.BindToInterface;
 	socketret = bind(ftpsocket, (struct sockaddr *)&laddr, sizeof(laddr));
 	if  ( socketret != 0 ) {
-		writelogentry(NULL, "Failed to start server. Can not bind to address.", NULL);
+		printf("\r\n Failed to start server. Can not bind to address\r\n\r\n");
 		free(scb);
 		close(ftpsocket);
 		return 0;
 	}
+
+	writelogentry(NULL, success220, NULL);
 
 	socketret = listen(ftpsocket, SOMAXCONN);
 	while ( socketret == 0 ) {

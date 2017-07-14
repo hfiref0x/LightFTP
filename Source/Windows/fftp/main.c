@@ -214,7 +214,10 @@ void main()
 
         cfg = InitConfig(ConfigFilePath);
 		if (cfg == NULL)
+		{
+			writeconsolestr("Could not find configuration file\r\n\r\n Usage: fftp [CONFIGFILE]\r\n\r\n");
 			break;
+		}
 
 		g_cfg.ConfigFile = cfg;
 
@@ -246,11 +249,10 @@ void main()
 		if (ParseConfig(cfg, CONFIG_SECTION_NAME, "maxport", textbuf, MAX_PATH))
 			g_cfg.PasvPortMax = strtoul_a(textbuf);
 
+		g_LogHandle = INVALID_HANDLE_VALUE;
 		RtlSecureZeroMemory(&textbuf, sizeof(textbuf));
-		ParseConfig(cfg, CONFIG_SECTION_NAME, "logfilepath", textbuf, MAX_PATH);
-
-		g_LogHandle = NULL;
-		if (textbuf[0] != 0) {
+		if (ParseConfig(cfg, CONFIG_SECTION_NAME, "logfilepath", textbuf, MAX_PATH))
+		{
 			GetSystemTimeAsFileTime(&t);
 			UT.LowPart = t.dwLowDateTime;
 			UT.HighPart = t.dwHighDateTime;
@@ -259,6 +261,17 @@ void main()
 			_strcat_a(textbuf, ".txt");
 			g_LogHandle = CreateFileA(textbuf, GENERIC_WRITE | SYNCHRONIZE,
 				FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		}
+		else
+		{
+			writeconsolestr("Error: logfilepath section is not found in configuration\r\n");
+			break;
+		}
+
+		if (g_LogHandle == INVALID_HANDLE_VALUE)
+		{
+			writeconsolestr("Error: Failed to open / create log file. Please check logfilepath\r\n");
+			break;
 		}
 
 		writeconsolestr("Log file    : ");
@@ -288,7 +301,10 @@ void main()
 
         g_Thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)&ftpmain, NULL, 0, NULL);
 		if (g_Thread == NULL)
+		{
+			writeconsolestr("Error: Failed to create main server thread\r\n");
 			break;
+		}
 
 		/* common message loop for Windows application */
 		do {

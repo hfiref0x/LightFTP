@@ -1,12 +1,12 @@
 /*
- * main.c
- *
- *  Created on: Aug 20, 2016
- *
- *  Modified on: July 06, 2017
- *
- *      Author: lightftp
- */
+* main.c
+*
+*  Created on: Aug 20, 2016
+*
+*  Modified on: July 14, 2017
+*
+*      Author: lightftp
+*/
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -83,11 +83,17 @@ int main(int argc, char *argv[])
 
 		memset(textbuf, 0, bufsize);
 		if (!ParseConfig(cfg, CONFIG_SECTION_NAME, "logfilepath", textbuf, bufsize))
+		{
+			printf("Error: logfilepath section is not found in configuration\r\n");
 			break;
+		}
 
 		g_log = open(textbuf, O_RDWR | O_CREAT, S_IWUSR | S_IRUSR);
 		if (g_log == -1)
+		{
+			printf("Error: Failed to open/create log file. Please check logfilepath\r\n");
 			break;
+		}
 
 		lseek(g_log, 0L, SEEK_END);
 
@@ -128,7 +134,10 @@ int main(int argc, char *argv[])
 
 		thid = (pthread_t)0;
 		if (pthread_create(&thid, NULL, &ftpmain, NULL) != 0)
+		{
+			printf("Error: Failed to create main server thread\r\n");
 			break;
+		}
 
 		do {
 			c = getc(stdin);
@@ -137,6 +146,9 @@ int main(int argc, char *argv[])
 
 		break;
 	}
+
+	if (cfg == NULL)
+		printf("Could not find configuration file\r\n\r\n Usage: fftp [CONFIGFILE]\r\n\r\n");
 
 	close(g_log);
 
