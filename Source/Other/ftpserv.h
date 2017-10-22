@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: July 14, 2017
+*  Modified on: Oct 22, 2017
 *
 *      Author: lightftp
 */
@@ -70,6 +70,7 @@ typedef struct	_FTPCONTEXT {
 	int					File;
 	int					Mode;
 	int					Access;
+	int					CreateMode;
 	int					SessionID;
 	off_t				RestPoint;
 	char				CurrentDir[PATH_MAX];

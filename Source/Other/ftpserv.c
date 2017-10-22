@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: July 14, 2017
+*  Modified on: Oct 22, 2017
 *
 *      Author: lightftp
 */
@@ -1214,7 +1214,7 @@ void *stor_thread(PFTPCONTEXT context)
 		if (buffer == NULL)
 			break;
 
-		f = open(context->GPBuffer, O_CREAT | O_RDWR | O_EXCL, S_IRWXU | S_IRGRP | S_IROTH);
+		f = open(context->GPBuffer, context->CreateMode, S_IRWXU | S_IRGRP | S_IROTH);
 		context->File = f;
 		if (f == -1)
 			break;
@@ -1295,29 +1295,30 @@ int ftpSTOR(PFTPCONTEXT context, const char *params)
 			(char *)params, context->GPBuffer) == NULL)
 		return 0;
 
-	/*
-	 * stat must fail
-	 */
-	while (stat(context->GPBuffer, &filestats) != 0)
+	if ( context->Access == FTP_ACCESS_FULL )
+		context->CreateMode = O_CREAT | O_WRONLY| O_TRUNC;
+	else
 	{
-		sendstring(context->ControlSocket, interm150);
-		writelogentry(context, " STOR: ", (char *)params);
-		context->WorkerThreadAbort = 0;
-
-		pthread_mutex_lock(&context->MTLock);
-
-		context->WorkerThreadValid = pthread_create(&tid, NULL, (__ptr_thread_start_routine)&stor_thread, context);
-		if ( context->WorkerThreadValid == 0 )
-			context->WorkerThreadId = tid;
-		else
-			sendstring(context->ControlSocket, error451);
-
-		pthread_mutex_unlock(&context->MTLock);
-
-		return 1;
+		context->CreateMode = O_CREAT | O_WRONLY| O_EXCL;
+		if (stat(context->GPBuffer, &filestats) == 0)
+			return sendstring(context->ControlSocket, error550_r);
 	}
 
-	return sendstring(context->ControlSocket, error550);
+	sendstring(context->ControlSocket, interm150);
+	writelogentry(context, " STOR: ", (char *)params);
+	context->WorkerThreadAbort = 0;
+
+	pthread_mutex_lock(&context->MTLock);
+
+	context->WorkerThreadValid = pthread_create(&tid, NULL, (__ptr_thread_start_routine)&stor_thread, context);
+	if ( context->WorkerThreadValid == 0 )
+		context->WorkerThreadId = tid;
+	else
+		sendstring(context->ControlSocket, error451);
+
+	pthread_mutex_unlock(&context->MTLock);
+
+	return 1;
 }
 
 int ftpSYST(PFTPCONTEXT context, const char *params)
@@ -1401,7 +1402,7 @@ int ftpAPPE(PFTPCONTEXT context, const char *params)
 
 	if (context->Access == FTP_ACCESS_NOT_LOGGED_IN)
 		return sendstring(context->ControlSocket, error530);
-	if ( context->Access < FTP_ACCESS_CREATENEW )
+	if ( context->Access < FTP_ACCESS_FULL )
 		return sendstring(context->ControlSocket, error550_r);
 	if ( params == NULL )
 		return sendstring(context->ControlSocket, error501);
