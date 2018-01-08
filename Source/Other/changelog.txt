@@ -1,0 +1,31 @@
++ Added
+- Removed
+* Fixed/Changed
+
+Jan 8, 2018
+
+* Do not display user pass during connection
+* Disable logging if no log file specified in ftp config
++ More details if log file open failed
++ Made this changelog public
+
+Oct 22, 2017
+
+* Fix Issue 6 "Cannot overwrite file"
+
+Jul 14, 2017
+
++ Added more output messages in case of error
+
+Jul 6, 2017
+
+* Fix Issue 5 Buffer overflow in writelogentry
+
+Apr 20, 2017
+
++ Performance counters added
+* Several changes after profiling
+
+Sep 17, 2017
+
++ Version 1.1 github release

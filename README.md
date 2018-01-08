@@ -38,4 +38,4 @@ Example of configuration file can be found in Compiled directory.
 
 # Authors
 
-(c) 2007 - 2017 LightFTP Project
+(c) 2007 - 2018 LightFTP Project

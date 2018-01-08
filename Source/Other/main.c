@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: July 14, 2017
+*  Modified on: Jan 08, 2018
 *
 *      Author: lightftp
 */
@@ -82,20 +82,21 @@ int main(int argc, char *argv[])
 			g_cfg.PasvPortMax = strtoul(textbuf, NULL, 10);
 
 		memset(textbuf, 0, bufsize);
-		if (!ParseConfig(cfg, CONFIG_SECTION_NAME, "logfilepath", textbuf, bufsize))
+		if (ParseConfig(cfg, CONFIG_SECTION_NAME, "logfilepath", textbuf, bufsize))
 		{
-			printf("Error: logfilepath section is not found in configuration\r\n");
-			break;
-		}
+			g_log = open(textbuf, O_RDWR | O_CREAT, S_IWUSR | S_IRUSR);
+			if (g_log == -1)
+			{
+				printf("Error: Failed to open/create log file. Please check logfilepath: %s\r\n", textbuf);
+				printf("Possible errors: 1) path is invalid; 2) file is read only; 3) file is directory; 4) insufficient permissions\r\n");
+				break;
+			}
 
-		g_log = open(textbuf, O_RDWR | O_CREAT, S_IWUSR | S_IRUSR);
-		if (g_log == -1)
-		{
-			printf("Error: Failed to open/create log file. Please check logfilepath\r\n");
-			break;
-		}
+		} else
+			printf("WARNING: logfilepath section is not found in configuration. Logging to file disabled.\r\n");
 
-		lseek(g_log, 0L, SEEK_END);
+		if (g_log != -1)
+			lseek(g_log, 0L, SEEK_END);
 
 		printf("\r\n    [ LightFTP server v1.1 ]\r\n\r\n");
 		printf("Log file        : %s\r\n", textbuf);
@@ -150,7 +151,8 @@ int main(int argc, char *argv[])
 	if (cfg == NULL)
 		printf("Could not find configuration file\r\n\r\n Usage: fftp [CONFIGFILE]\r\n\r\n");
 
-	close(g_log);
+	if (g_log != -1) 
+		close(g_log);
 
 	if (cfg != NULL)
 		free(cfg);

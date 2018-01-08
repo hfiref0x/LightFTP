@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Oct 22, 2017
+*  Modified on: Jan 08, 2018
 *
 *      Author: lightftp
 */
@@ -45,6 +45,12 @@ static const char *ftpcmds[MAX_CMDS] = {
 	"MKD",  "RMD",  "STOR", "SYST", "FEAT", "APPE", "RNFR", "RNTO",
 	"OPTS", "MLSD"
 };
+
+/*
+ * must be in sync with ftpprocs & ftpcmds "PASS" index
+ */
+
+#define FTP_PASSCMD_INDEX	13
 
 unsigned int g_newid = 0;
 
@@ -1788,19 +1794,15 @@ void *ftp_client_thread(SOCKET *s)
 			if ( !recvcmd(ctx.ControlSocket, rcvbuf, sizeof(rcvbuf)) )
 				break;
 
-			writelogentry(&ctx, " @@ CMD: ", rcvbuf);
-
 			i = 0;
 			while (rcvbuf[i] == ' ')
 				i++;
 
 			cmd = &rcvbuf[i];
-
 			while ((rcvbuf[i] != 0) && (rcvbuf[i] != ' '))
 				i++;
 
 			cmdlen = &rcvbuf[i] - cmd;
-
 			while (rcvbuf[i] == ' ')
 				i++;
 
@@ -1815,7 +1817,13 @@ void *ftp_client_thread(SOCKET *s)
 				{
 					cmdno = c;
 					ftpprocs[c](&ctx, params);
+					break;
 				}
+
+			if ( cmdno != FTP_PASSCMD_INDEX )
+				writelogentry(&ctx, " @@ CMD: ", rcvbuf);
+			else
+				writelogentry(&ctx, " @@ CMD: ", "PASS ***");
 
 			if ( cmdno == -1 )
 				sendstring(ctx.ControlSocket, error500);
