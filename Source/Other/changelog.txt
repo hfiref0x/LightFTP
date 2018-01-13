@@ -26,6 +26,6 @@ Apr 20, 2017
 + Performance counters added
 * Several changes after profiling
 
-Sep 17, 2017
+Sep 17, 2016
 
 + Version 1.1 github release
