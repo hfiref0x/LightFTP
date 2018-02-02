@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: July 14, 2017
+*  Modified on: Feb 02, 2018
 *
 *      Author: lightftp
 */
@@ -16,7 +16,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-int ParseConfig(const char *pcfg, const char *section_name, const char *key_name, char *value, unsigned long value_size_max)
+int ParseConfig(
+    const char      *pcfg,
+    const char      *section_name,
+    const char      *key_name,
+    char            *value,
+    unsigned long   value_size_max)
 {
 	unsigned long	p = 0, sp;
 	char			vname[256];

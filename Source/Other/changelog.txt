@@ -2,6 +2,9 @@
 - Removed
 * Fixed/Changed
 
+Feb 2, 2018
++ error checking added for several malloc calls
+
 Jan 8, 2018
 
 * Do not display user pass during connection

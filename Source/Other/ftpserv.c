@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Jan 08, 2018
+*  Modified on: Feb 02, 2018
 *
 *      Author: lightftp
 */
@@ -290,6 +290,9 @@ char *finalpath(char *root_dir, char *current_dir, char *params, char *result_pa
 		return NULL;
 
 	tmp = malloc(PATH_MAX*4);
+	if (tmp == NULL)
+		abort();
+
 	memset(tmp, 0, PATH_MAX*4);
 
 	strcpy(result_path, root_dir);
@@ -1745,6 +1748,8 @@ void *ftp_client_thread(SOCKET *s)
 	ctx.Access = FTP_ACCESS_NOT_LOGGED_IN;
 	ctx.ControlSocket = *s;
 	ctx.GPBuffer = malloc(PATH_MAX*4);
+	if (ctx.GPBuffer == NULL)
+		return NULL;
 
 	memset(&laddr, 0, sizeof(laddr));
 	asz = sizeof(laddr);
@@ -1841,7 +1846,7 @@ void *ftp_client_thread(SOCKET *s)
 	free(ctx.GPBuffer);
 	close(ctx.ControlSocket);
 	*s = INVALID_SOCKET;
-	return 0;
+	return NULL;
 }
 
 void *ftpmain(void *p)
