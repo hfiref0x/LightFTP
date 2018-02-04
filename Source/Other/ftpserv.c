@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Feb 02, 2018
+*  Modified on: Feb 03, 2018
 *
 *      Author: lightftp
 */
@@ -29,6 +29,7 @@
 
 #include "ftpserv.h"
 #include "cfgparse.h"
+#include "x_malloc.h"
 
 __inline char lowcase_a(char c);
 
@@ -56,16 +57,16 @@ unsigned int g_newid = 0;
 
 char lowcase_a(char c)
 {
-        if ((c >= 'A') && (c <= 'Z'))
-                return c + ('a'-'A');
-        else
-                return c;
+	if ((c >= 'A') && (c <= 'Z'))
+		return c + ('a'-'A');
+	else
+		return c;
 }
 
 size_t ultostr(unsigned long x, char *s)
 {
         unsigned long   t=x;
-        size_t                  i, r=1;
+        size_t			i, r=1;
 
         while ( t >= 10 ) {
                 t /= 10;
@@ -125,8 +126,8 @@ int strncmpi(const char *s1, const char *s2, size_t cchars)
 	do {
 		c1 = lowcase_a(*s1);
 		c2 = lowcase_a(*s2);
-		s1++;
-		s2++;
+		++s1;
+		++s2;
 		cchars--;
 	} while ( (c1 != 0) && (c1 == c2) && (cchars>0) );
 
@@ -149,8 +150,8 @@ int strcmpi(const char *s1, const char *s2)
         do {
                 c1 = lowcase_a(*s1);
                 c2 = lowcase_a(*s2);
-                s1++;
-                s2++;
+                ++s1;
+                ++s2;
         } while ( (c1 != 0) && (c1 == c2) );
 
         return (int)(c1 - c2);
@@ -168,7 +169,7 @@ int delete_last_slash(char *s)
 		return 0;
 
 	while (s[1] != 0)
-		s++;
+		++s;
 
 	if (*s == '/') {
 		*s = 0;
@@ -184,7 +185,7 @@ int add_last_slash(char *s)
 		return 0;
 
 	while (s[1] != 0)
-		s++;
+		++s;
 
 	if (*s == '/')
 		return 0;
@@ -207,14 +208,14 @@ char *filepath(char *s)
  */
 	if (*s == '/')
 	{
-		s++;
-		p++;
+		++s;
+		++p;
 	}
 
 	while (*s != 0) {
 		if (*s == '/')
 			p = s;
-		s++;
+		++s;
 	}
 
 	*p = 0;
@@ -226,55 +227,68 @@ char *filepath(char *s)
  * This function filters the path out of ".." members
  * not allowing user to escape the home directory
 */
-void format_path(char *p_in, char *p_out)
+void format_path(char *input_path, char *filtered_path)
 {
-	char	*p_in0, *p_out0;
-	size_t	len;
+	char	*p0, *pnext, *fp0;
+	size_t	sl;
 
-	if (p_in[0] == '/')
+	if (*input_path == '/')
 	{
-		p_out[0] = '/';
-		++p_in;
-		++p_out;
+		++input_path;
+		*filtered_path = '/';
+		++filtered_path;
 	}
 
-	p_in0 = p_in;
-	p_out0 = p_out;
-	*p_out = 0;
+	p0 = input_path;
+	pnext = input_path;
+	fp0 = filtered_path;
+	*fp0 = 0;
 
-	while (p_in != NULL) {
-		while ((*p_in != '/') && (*p_in != 0))
-			++p_in;
+	while (1)
+	{
+		while ((*pnext != '/') && (*pnext != 0))
+			++pnext;
 
-		len = 1 + p_in - p_in0;
+		sl = pnext - p0;
 
-		if ((strncmp(p_in0, "../", 3) == 0) || (strncmp(p_in0, "..\0", 3) == 0))
+		while (sl > 0)
 		{
-			delete_last_slash(p_out0);
-			p_out = filepath(p_out0);
-			if (p_out != p_out0)
+			if (sl == 1)
+				if (*p0 == '.')
+					break;
+
+			if (sl == 2)
+				if ((p0[0] == '.') && (p0[1] == '.'))
+				{
+					delete_last_slash(filtered_path);
+					fp0 = filepath(filtered_path);
+					if (fp0 != filtered_path)
+					{
+						*fp0 = '/';
+						++fp0;
+						*fp0 = 0;
+					}
+					break;
+				}
+
+			strncpy(fp0, p0, sl);
+			fp0 += sl;
+			if (*pnext != 0)
 			{
-				p_out[0] = '/';
-				p_out[1] = 0;
-				++p_out;
+				*fp0 = '/';
+				++fp0;
 			}
-		}
-		else
-		{
-			if ((strncmp(p_in0, "./", 2) != 0) && (strncmp(p_in0, "/", 1) != 0)) {
-				strncpy(p_out, p_in0, len);
-				p_out += len;
-				*p_out = 0;
-			}
+			*fp0 = 0;
+
+			break;
 		}
 
-		p_in0 += len;
-
-		if (*p_in == 0)
+		if (*pnext == 0)
 			break;
 
-		++p_in;
-	};
+		++pnext;
+		p0 = pnext;
+	}
 }
 
 char *finalpath(char *root_dir, char *current_dir, char *params, char *result_path)
@@ -289,11 +303,7 @@ char *finalpath(char *root_dir, char *current_dir, char *params, char *result_pa
 	if (total_len >= PATH_MAX*4)
 		return NULL;
 
-	tmp = malloc(PATH_MAX*4);
-	if (tmp == NULL)
-		abort();
-
-	memset(tmp, 0, PATH_MAX*4);
+	tmp = x_malloc(PATH_MAX*4);
 
 	strcpy(result_path, root_dir);
 	add_last_slash(result_path);
@@ -1499,9 +1509,7 @@ int ftpRNTO(PFTPCONTEXT context, const char *params)
 	if ( params == NULL )
 		return sendstring(context->ControlSocket, error501);
 
-	_text = malloc(PATH_MAX * 4);
-	if (_text == NULL)
-		return sendstring(context->ControlSocket, error550_m);
+	_text = x_malloc(PATH_MAX * 4);
 
 	if (finalpath(
 			context->RootDir,
@@ -1747,9 +1755,7 @@ void *ftp_client_thread(SOCKET *s)
 	memset(&ctx, 0, sizeof(ctx));
 	ctx.Access = FTP_ACCESS_NOT_LOGGED_IN;
 	ctx.ControlSocket = *s;
-	ctx.GPBuffer = malloc(PATH_MAX*4);
-	if (ctx.GPBuffer == NULL)
-		return NULL;
+	ctx.GPBuffer = x_malloc(PATH_MAX*4);
 
 	memset(&laddr, 0, sizeof(laddr));
 	asz = sizeof(laddr);
@@ -1872,13 +1878,7 @@ void *ftpmain(void *p)
 	rv = 1;
 	setsockopt(ftpsocket, SOL_SOCKET, SO_REUSEADDR, &rv, sizeof(rv));
 
-	scb = (SOCKET *)malloc(sizeof(SOCKET)*g_cfg.MaxUsers);
-	if ( scb == NULL ) {
-		printf("\r\n not enough free memory\r\n");
-		close(ftpsocket);
-		return 0;
-	}
-
+	scb = (SOCKET *)x_malloc(sizeof(SOCKET)*g_cfg.MaxUsers);
 	for (i = 0; i<g_cfg.MaxUsers; i++)
 		scb[i] = INVALID_SOCKET;
 

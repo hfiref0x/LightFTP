@@ -2,6 +2,10 @@
 - Removed
 * Fixed/Changed
 
+Feb 3, 2018
++ more work around malloc calls
++ some redesign in ftpserv.c format_path routine
+
 Feb 2, 2018
 + error checking added for several malloc calls
 

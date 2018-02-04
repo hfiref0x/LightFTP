@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Feb 02, 2018
+*  Modified on: Feb 03, 2018
 *
 *      Author: lightftp
 */
@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "x_malloc.h"
 
 int ParseConfig(
     const char      *pcfg,
@@ -164,9 +165,7 @@ char *InitConfig(char *cfg_filename)
 		fsz = lseek(f_config, 0L, SEEK_END) + 1;
 		lseek(f_config, 0L, SEEK_SET);
 
-		buffer = malloc(fsz);
-		if (buffer == NULL)
-			break;
+		buffer = x_malloc(fsz);
 
 		fsz = read(f_config, buffer, fsz);
 		buffer[fsz] = 0;

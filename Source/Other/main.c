@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Feb 02, 2018
+*  Modified on: Feb 03, 2018
 *
 *      Author: lightftp
 */
@@ -23,6 +23,7 @@
 
 #include "cfgparse.h"
 #include "ftpserv.h"
+#include "x_malloc.h"
 
 FTP_CONFIG	g_cfg;
 int			g_log = -1;
@@ -47,9 +48,7 @@ int main(int argc, char *argv[])
 
 	while (cfg != NULL)
 	{
-		textbuf = malloc(bufsize);
-		if (textbuf == NULL)
-			break;
+		textbuf = x_malloc(bufsize);
 
 		g_cfg.ConfigFile = cfg;
 
