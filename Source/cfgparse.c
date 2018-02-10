@@ -3,19 +3,49 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Feb 03, 2018
+*  Modified on: Feb 09, 2018
 *
 *      Author: lightftp
 */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "x_malloc.h"
+
+char * skip_comments_and_blanks(char *p)
+{
+	while (*p != 0) {
+
+		while (
+				(*p == ' ') ||
+				(*p == '\n')
+				)
+			++p;
+
+		if (*p == '#')
+		{
+			++p;
+
+			while (
+					(*p != 0) &&
+					(*p != '\n')
+					)
+				++p;
+
+			continue;
+		}
+		else
+			break;
+
+	}
+
+	return p;
+}
 
 int ParseConfig(
     const char      *pcfg,
@@ -24,54 +54,61 @@ int ParseConfig(
     char            *value,
     unsigned long   value_size_max)
 {
-	unsigned long	p = 0, sp;
-	char			vname[256];
+	unsigned long	sp;
+	char			vname[256], *p = (char *)pcfg;
 
 	if (value_size_max == 0)
 		return 0;
 	--value_size_max;
 
-	while (pcfg[p] != 0)
+	while (*p != 0)
 	{
 		/*
 		 *  skip all characters before first '['
 		 */
-		while ((pcfg[p] != '[') && (pcfg[p] != 0))
-			++p;
+		p = skip_comments_and_blanks(p);
 
 		/*
-		 *  we got EOF so quit
+		 *  if we got EOF so quit
 		 */
-		if (pcfg[p] == 0)
+		if (*p == 0)
 			break;
 
-		/*
-		 *  newline - start over again
-		 */
-		if ((pcfg[p] == '\r') || (pcfg[p] == '\n'))
+		if (*p != '[')
+		{
+			++p;
 			continue;
+		}
 
 		/*
 		 *  skip '[' that we found
 		 */
 		++p;
 
+		/*
+		 * copy section name to vname
+		 */
 		sp = 0;
-		while ((pcfg[p] != ']') && (pcfg[p] != 0) && (pcfg[p] != '\r') && (pcfg[p] != '\n') && (sp < 255))
+		while (
+				(*p != ']') &&
+				(*p != 0) &&
+				(*p != '\n') &&
+				(sp < 255)
+				)
 		{
-			vname[sp] = pcfg[p];
+			vname[sp] = *p;
 			++sp;
 			++p;
 		}
 		vname[sp] = 0;
 
-		if (pcfg[p] == 0)
+		if (*p == 0)
 			break;
 
 		/*
 		 * newline - start over again
 		 */
-		if ((pcfg[p] == '\r') || (pcfg[p] == '\n'))
+		if (*p == '\n')
 			continue;
 
 		/*
@@ -82,32 +119,47 @@ int ParseConfig(
 		if (strcmp(vname, section_name) == 0)
 		{
 			do {
-				while ((pcfg[p] == ' ') || (pcfg[p] == '\r') || (pcfg[p] == '\n'))
-					++p;
-
-				if ((pcfg[p] == 0) || (pcfg[p] == '['))
+				p = skip_comments_and_blanks(p);
+				if ((*p == 0) || (*p == '['))
 					break;
 
 				sp = 0;
-				while ((pcfg[p] != '=') && (pcfg[p] != 0) && (pcfg[p] != '\r') && (pcfg[p] != '\n') && (sp < 255))
+				while (
+						(*p != '=') &&
+						(*p != ' ') &&
+						(*p != 0) &&
+						(*p != '\n') &&
+						(sp < 255)
+						)
 				{
-					vname[sp] = pcfg[p];
+					vname[sp] = *p;
 					++sp;
 					++p;
 				}
 				vname[sp] = 0;
 
-				if (pcfg[p] == 0)
+				if (*p == 0)
 					break;
-				++p;
+
+				while (*p == ' ')
+					++p;
+
+				if (*p != '=')
+					break;
+
+				p++;
 
 				if (strcmp(vname, key_name) == 0)
 				{
 					sp = 0;
-					while ((pcfg[p] != '\r') && (pcfg[p] != '\n') && (pcfg[p] != 0))
+
+					while (
+							(*p != '\n') &&
+							(*p != 0)
+							)
 					{
 						if (sp < value_size_max)
-							value[sp] = pcfg[p];
+							value[sp] = *p;
 						else
 							return 0;
 						++sp;
@@ -118,35 +170,30 @@ int ParseConfig(
 				}
 				else
 				{
-					while ((pcfg[p] != '\r') && (pcfg[p] != '\n') && (pcfg[p] != 0))
+					while (
+							(*p != '\n') &&
+							(*p != 0)
+							)
 						++p;
 				}
 
-			} while (pcfg[p] != 0);
+			} while (*p != 0);
 		}
 		else
 		{
-			/*
-			 *  parse and skip all
-			 */
 			do {
-				while ((pcfg[p] == ' ') || (pcfg[p] == '\r') || (pcfg[p] == '\n'))
-					++p;
+				p = skip_comments_and_blanks(p);
 
-				if ((pcfg[p] == 0) || (pcfg[p] == '['))
+				if ((*p == 0) || (*p == '['))
 					break;
 
-				while ((pcfg[p] != '=') && (pcfg[p] != 0) && (pcfg[p] != '\r') && (pcfg[p] != '\n'))
+				while (
+						(*p != '\n') &&
+						(*p != 0)
+						)
 					++p;
 
-				if (pcfg[p] == 0)
-					break;
-				++p;
-
-				while ((pcfg[p] != '\r') && (pcfg[p] != '\n') && (pcfg[p] != 0))
-					++p;
-
-			} while (pcfg[p] != 0);
+			} while (1);
 		}
 	}
 

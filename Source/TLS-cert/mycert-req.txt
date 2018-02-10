@@ -1,0 +1,23 @@
+[ req ]
+prompt                 = no
+default_bits           = 2048
+distinguished_name     = req_distinguished_name
+output_password        = 54321
+default_keyfile        = privkey.pem
+string_mask            = utf8only
+x509_extensions        = v3
+
+[ req_distinguished_name ]
+CN                     = Cert name
+O                      = Organization
+L                      = City
+ST                     = State or Region
+C                      = Country
+emailAddress           = mymailbox@gmail.com
+
+[v3_ca]
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always,issuer:always
+basicConstraints       = critical, CA:TRUE
+keyUsage               = digitalSignature, keyCertSign, keyEncipherment
+extendedKeyUsage       = serverAuth,clientAuth

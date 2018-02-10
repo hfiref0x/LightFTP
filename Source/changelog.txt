@@ -2,37 +2,47 @@
 - Removed
 * Fixed/Changed
 
-Feb 3, 2018
+Feb 8, 2018, v2.0
+
++ ftps
++ config file now has comments
++ cygwin compatibility
++ multiple other changes
++ readme updated
+
+Feb 3, 2018, v1.1
+
 + more work around malloc calls
 + some redesign in ftpserv.c format_path routine
 
-Feb 2, 2018
+Feb 2, 2018, v1.1
+
 + error checking added for several malloc calls
 
-Jan 8, 2018
+Jan 8, 2018, v1.1
 
 * Do not display user pass during connection
 * Disable logging if no log file specified in ftp config
 + More details if log file open failed
 + Made this changelog public
 
-Oct 22, 2017
+Oct 22, 2017, v1.1
 
 * Fix Issue 6 "Cannot overwrite file"
 
-Jul 14, 2017
+Jul 14, 2017, v1.1
 
 + Added more output messages in case of error
 
-Jul 6, 2017
+Jul 6, 2017, v1.1
 
 * Fix Issue 5 Buffer overflow in writelogentry
 
-Apr 20, 2017
+Apr 20, 2017, v1.1
 
 + Performance counters added
 * Several changes after profiling
 
-Sep 17, 2016
+Sep 17, 2016, v1.1
 
 + Version 1.1 github release

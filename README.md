@@ -3,38 +3,86 @@
 
 # System Requirements
 
-* x86-32/x64 Windows Vista/7/8/8.1/10.
 * x86-32/x64 POSIX compliant OS, e.g. Linux.
+* x86-32/x64 Windows Vista/7/8/8.1/10 with Cygwin (see Build section of this readme).
 * No admin/root privileges required. FTP server must be allowed in firewall.
 
 # Configuration
 
-Stored in fftp.cfg file, contain configuration section named ftpconfig and number of sections describing users and their privileges. 
+Stored in fftp.conf file, contain configuration section named ftpconfig and number of sections describing users and their privileges. 
 
-ftpconfig section values:
-* port = unsigned integer, connection port number, allowed range 0..65535
-* maxusers = unsigned integer, maximum number of users allowed to connect
-* interface = string, network interface to bind ftp server to, for all interfaces use "0.0.0.0"
-* logfilepath = string, path to ftp log file, e.g. C:\TEMP (/home/ExampleUserName/ExampleDataDirectory/fftplog for Linux), logged data append to the end of file
+#### [ftpconfig]
 
-User section values:
-* pswd = string, user password, specify * as any password
-* accs = string, access right, see "Available user access rights"
-* root = string, path to user home directory
+##### port
+Port number to bind the server to.
+default: 21
 
-Available user access rights:
-* admin - read, write, append, delete, rename
-* readonly - browse and download
-* upload - creating new directories, store new files, append disabled
-* Note: any other access right is similar to banned (user not allowed to connect).
+##### maxusers
+Maximum connections count to the server, that can be established simultaneously.
+default: 1
 
-Example of configuration file can be found in Compiled directory.
+##### interface
+Interface IP to bind to. Use 0.0.0.0 to listen on any available interface.
+default: 127.0.0.1
+
+##### external_ip
+If you running the server behind a NAT, it is a good idea to put your real IP here.
+This will help clients to establish data connections
+default: 0.0.0.0
+
+##### local_mask
+IP mask for local network
+This will help the server to distinguish between local and Internet clients
+default: 255.255.255.0
+
+##### minport
+##### maxport
+Port range for data connections. You can use it to configurate port forwarding on your gateway device
+default: 1024..65535
+
+##### logfilepath
+Full path with file name for a log file. Comment or delete it to disable logging.
+default: disabled
+
+##### CATrustFile
+It is recommended to leave this option as it is (/etc/ssl/certs/ca-certificates.crt)
+
+##### ServerCertificate
+Path to your SSL certificate. Accepted format is x509 ASCII PEM.
+
+##### Keyfile
+Path to PEM private key file for your certificate.
+
+##### KeyfilePassword
+Password to decrypt private key.
+
+# User sections
+
+Note for "accs" field:
+
+##### banned 
+not allowed to log in
+
+##### readonly
+just read directories and download files
+
+##### upload
+creating new directories, store new files. Append, rename and delete disabled.
+
+##### admin
+all the features enabled.
+
+Note for "pswd" field:
+pswd=* means "any password is match"
+
+Example of configuration file can be found in Source directory as fftp.conf.
 
 # Build 
 
-* LightFTP comes with full source code, written in C.
-* In order to build from source in Windows you need Microsoft Visual Studio 2013/2015 and later versions. Source files (including VS project) located in Source/Windows directory.
-* In order to build from source in Linux you need GCC C compiler, run make command in the Release directory. Source files (including makefile) located in Source/Other directory.
+* LightFTP comes with full source code, written in C;
+* In order to build from source in Windows you need Cygwin environment (https://www.cygwin.com/) with GNU make, gnutls and pthreads packages installed. Also make sure Cygwin bin folder is set in system wide PATH variable (e.g. PATH=SomeOfYourOtherValues;C:\Cygwin\bin;C:\Cygwin\usr\bin). To build executable run make command in the Release directory;
+* In order to build from source in Linux you need GCC C compiler, run make command in the Release directory;
+* Old Windows Visual Studio source code and project files located in Source/Deprecated directory, in order to build from this source you need Microsoft Visual Studio 2013/2015 and later versions.
 
 # Authors
 

@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Oct 22, 2017
+*  Modified on: Feb 09, 2018
 *
 *      Author: lightftp
 */
@@ -11,11 +11,26 @@
 #ifndef FTPSERV_H_
 #define FTPSERV_H_
 
+#define __USE_GNU
+#define _GNU_SOURCE
+
+#include <limits.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <time.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <pthread.h>
+#include <sys/types.h>
 #include <sys/socket.h>
-#include <linux/limits.h>
+#include <sys/stat.h>
+#include <netinet/in.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <pthread.h>
+#include <gnutls/gnutls.h>
 
 typedef struct _FTP_CONFIG {
 	char			*ConfigFile;
@@ -72,21 +87,26 @@ typedef struct	_FTPCONTEXT {
 	int					Access;
 	int					CreateMode;
 	int					SessionID;
+	int					DataProtectionLevel;
 	off_t				RestPoint;
+	unsigned long int	BlockSize;
 	char				CurrentDir[PATH_MAX];
 	char				RootDir[PATH_MAX];
 	char				*GPBuffer;
+	gnutls_session_t	TLS_session;
 } FTPCONTEXT, *PFTPCONTEXT;
 
 typedef int (*FTPROUTINE) (PFTPCONTEXT context, const char *params);
 typedef void *(__thread_start_routine)(void *), *__ptr_thread_start_routine;
 
-FTP_CONFIG	g_cfg;
-int			g_log;
+extern FTP_CONFIG	g_cfg;
+extern int			g_log;
+extern void *ftpmain(void *p);
 
-void *ftpmain(void *p);
+extern gnutls_certificate_credentials_t		x509_cred;
+extern gnutls_priority_t					priority_cache;
 
-#define	MAX_CMDS 26
+#define	MAX_CMDS 29
 
 int ftpUSER	(PFTPCONTEXT context, const char *params);
 int ftpQUIT	(PFTPCONTEXT context, const char *params);
@@ -114,28 +134,37 @@ int ftpRNFR	(PFTPCONTEXT context, const char *params);
 int ftpRNTO	(PFTPCONTEXT context, const char *params);
 int ftpOPTS	(PFTPCONTEXT context, const char *params);
 int ftpMLSD	(PFTPCONTEXT context, const char *params);
+int ftpAUTH (PFTPCONTEXT context, const char *params);
+int ftpPBSZ (PFTPCONTEXT context, const char *params);
+int ftpPROT (PFTPCONTEXT context, const char *params);
 
 static const char success200[]		= "200 Command okay.\r\n";
 static const char success200_1[]	= "200 Type set to A.\r\n";
 static const char success200_2[]	= "200 Type set to I.\r\n";
-static const char success211[]		= "211-Extensions supported:\r\n PASV\r\n UTF8\r\n TVFS\r\n REST STREAM\n SIZE\r\n MLSD\r\n";
+static const char success211[]		=
+		"211-Extensions supported:\r\n PASV\r\n UTF8\r\n TVFS\r\n REST STREAM\r\n "
+		"SIZE\r\n MLSD\r\n AUTH TLS\r\n PBSZ\r\n PROT\r\n";
 static const char success211_end[]	= "211 End.\r\n";
 static const char success215[]		= "215 Windows_NT Type: L8\r\n";
-static const char success220[]		= "220 LightFTP server v1.1 ready\r\n";
+static const char success220[]		= "220 LightFTP server v2.0 ready\r\n";
 static const char success221[]		= "221 Goodbye!\r\n";
 static const char success226[]		= "226 Transfer complete. Closing data connection.\r\n";
 static const char success227[]		= "227 Entering Passive Mode (";
 static const char success230[]		= "230 User logged in, proceed.\r\n";
+static const char success234[]		= "234 AUTH command OK. Initializing TLS connection.\r\n";
 static const char success250[]		= "250 Requested file action okay, completed.\r\n";
 static const char success257[]		= "257 Directory created.\r\n";
 static const char error425[]		= "425 Can not open data connection.\r\n";
 static const char error426[]		= "426 Connection closed; transfer aborted.\r\n";
 static const char error451[]		= "451 Requested action aborted. Local error in processing.\r\n";
 static const char error500[]		= "500 Syntax error, command unrecognized.\r\n";
+static const char error500_auth[]	= "500 AUTH unsuccessful.\r\n";
 static const char error501[]		= "501 Syntax error in parameters or arguments.\r\n";
+static const char error503[]		= "503 Invalid sequence of commands (AUTH TLS required prior to authentication).\r\n";
+static const char error504[]		= "504 Command not implemented for that parameter.\r\n";
 static const char error530[]		= "530 Please login with USER and PASS.\r\n";
 static const char error530_b[]		= "530 This account is disabled.\r\n";
-static const char error530_r[]		= "530 Invalid user name of password.\r\n";
+static const char error530_r[]		= "530 Invalid user name or password.\r\n";
 static const char error550[]		= "550 File or directory unavailable.\r\n";
 static const char error550_r[]		= "550 Permission denied.\r\n";
 static const char error550_a[]		= "550 Data channel was closed by ABOR command from client.\r\n";

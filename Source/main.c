@@ -3,30 +3,73 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Feb 03, 2018
+*  Modified on: Feb 09, 2018
 *
 *      Author: lightftp
 */
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <pthread.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
-#include "cfgparse.h"
 #include "ftpserv.h"
+#include "cfgparse.h"
 #include "x_malloc.h"
 
 FTP_CONFIG	g_cfg;
 int			g_log = -1;
+
+gnutls_dh_params_t					dh_params = NULL;
+gnutls_certificate_credentials_t	x509_cred = NULL;
+gnutls_priority_t					priority_cache = NULL;
+
+static	char	CAFILE[PATH_MAX],
+				CERTFILE[PATH_MAX],
+				KEYFILE[PATH_MAX],
+				KEYFILE_PASS[256];
+
+void TLSInit()
+{
+	while (gnutls_global_init() >= 0)
+	{
+		if (gnutls_certificate_allocate_credentials(&x509_cred) < 0)
+    		break;
+
+    	if (gnutls_certificate_set_x509_trust_file(x509_cred, CAFILE,
+    			GNUTLS_X509_FMT_PEM) < 0)
+    		break;
+
+    	if (gnutls_certificate_set_x509_key_file2(x509_cred, CERTFILE,
+    			KEYFILE, GNUTLS_X509_FMT_PEM, KEYFILE_PASS, 0) < 0)
+    		break;
+
+    	if (gnutls_priority_init(&priority_cache, NULL, NULL) < 0)
+    		break;
+
+#if GNUTLS_VERSION_NUMBER >= 0x030506
+    	gnutls_certificate_set_known_dh_params(x509_cred, GNUTLS_SEC_PARAM_HIGH);
+#else
+    	gnutls_dh_params_init(&dh_params);
+    	gnutls_dh_params_generate2(dh_params,
+    			gnutls_sec_param_to_pk_bits(GNUTLS_PK_DH, GNUTLS_SEC_PARAM_HIGH));
+    	gnutls_certificate_set_dh_params(x509_cred, dh_params);
+    	gnutls_dh_params_deinit(dh_params);
+#endif
+    	break;
+    }
+}
+
+void TLSCleanup()
+{
+#if GNUTLS_VERSION_NUMBER < 0x030506
+	if ( dh_params != NULL)
+		gnutls_dh_params_deinit(dh_params);
+#endif
+
+	if ( x509_cred != NULL )
+		gnutls_certificate_free_credentials(x509_cred);
+
+	if ( priority_cache != NULL )
+		gnutls_priority_deinit(priority_cache);
+
+	gnutls_global_deinit();
+}
 
 int main(int argc, char *argv[])
 {
@@ -80,6 +123,11 @@ int main(int argc, char *argv[])
 		if (ParseConfig(cfg, CONFIG_SECTION_NAME, "maxport", textbuf, bufsize))
 			g_cfg.PasvPortMax = strtoul(textbuf, NULL, 10);
 
+		ParseConfig(cfg, CONFIG_SECTION_NAME, "CATrustFile", CAFILE, sizeof(CAFILE));
+		ParseConfig(cfg, CONFIG_SECTION_NAME, "ServerCertificate", CERTFILE, sizeof(CERTFILE));
+		ParseConfig(cfg, CONFIG_SECTION_NAME, "Keyfile", KEYFILE, sizeof(KEYFILE));
+		ParseConfig(cfg, CONFIG_SECTION_NAME, "KeyfilePassword", KEYFILE_PASS, sizeof(KEYFILE_PASS));
+
 		memset(textbuf, 0, bufsize);
 		if (ParseConfig(cfg, CONFIG_SECTION_NAME, "logfilepath", textbuf, bufsize))
 		{
@@ -97,7 +145,7 @@ int main(int argc, char *argv[])
         if (g_log != -1)
             lseek(g_log, 0L, SEEK_END);
 
-		printf("\r\n    [ LightFTP server v1.1 ]\r\n\r\n");
+		printf("\r\n    [ LightFTP server v2.0 ]\r\n\r\n");
 		printf("Log file        : %s\r\n", textbuf);
 
 		getcwd(textbuf, bufsize);
@@ -132,6 +180,8 @@ int main(int argc, char *argv[])
 
 		printf("\r\n TYPE q or Ctrl+C to terminate >\r\n");
 
+		TLSInit();
+
 		thid = (pthread_t)0;
 		if (pthread_create(&thid, NULL, &ftpmain, NULL) != 0)
 		{
@@ -158,6 +208,8 @@ int main(int argc, char *argv[])
 
 	if (textbuf != NULL)
 		free(textbuf);
+
+	TLSCleanup();
 
 	exit(2);
 }
