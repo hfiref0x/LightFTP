@@ -47,6 +47,8 @@ char * skip_comments_and_blanks(char *p)
 	return p;
 }
 
+/* TODO: Refactor this function */
+
 int ParseConfig(
     const char      *pcfg,
     const char      *section_name,
