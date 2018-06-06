@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Feb 09, 2018
+*  Modified on: Jun 06, 2018
 *
 *      Author: lightftp
 */
@@ -49,7 +49,6 @@ void TLSInit()
     	gnutls_dh_params_generate2(dh_params,
     			gnutls_sec_param_to_pk_bits(GNUTLS_PK_DH, GNUTLS_SEC_PARAM_HIGH));
     	gnutls_certificate_set_dh_params(x509_cred, dh_params);
-    	gnutls_dh_params_deinit(dh_params);
 #endif
     	break;
     }
