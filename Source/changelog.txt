@@ -2,6 +2,9 @@
 - Removed
 * Fixed/Changed
 
+Feb 8, 2018, v2.0a
++ old lame string formatting refactored
+
 Feb 8, 2018, v2.0
 
 + ftps

@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Feb 09, 2018
+*  Modified on: Jun 28, 2018
 *
 *      Author: lightftp
 */
@@ -11,8 +11,6 @@
 #include "ftpserv.h"
 #include "cfgparse.h"
 #include "x_malloc.h"
-
-__inline char lowcase_a(char c);
 
 static const FTPROUTINE ftpprocs[MAX_CMDS] = {
 	ftpUSER, ftpQUIT, ftpNOOP, ftpPWD, ftpTYPE, ftpPORT, ftpLIST, ftpCDUP,
@@ -29,114 +27,12 @@ static const char *ftpcmds[MAX_CMDS] = {
 };
 
 /*
+ * FTP_PASSCMD_INDEX
  * must be in sync with ftpprocs & ftpcmds "PASS" index
  */
-
 #define FTP_PASSCMD_INDEX	13
 
 unsigned int g_newid = 0;
-
-char lowcase_a(char c)
-{
-	if ((c >= 'A') && (c <= 'Z'))
-		return c + ('a'-'A');
-	else
-		return c;
-}
-
-size_t ultostr(unsigned long x, char *s)
-{
-        unsigned long   t=x;
-        size_t			i, r=1;
-
-        while ( t >= 10 ) {
-                t /= 10;
-                r++;
-        }
-
-        if (s == 0)
-                return r;
-
-        for (i = r; i != 0; i--) {
-                s[i-1] = (char)(x % 10) + '0';
-                x /= 10;
-        }
-
-        s[r] = (char)0;
-        return r;
-}
-
-size_t u64tostr(unsigned long long x, char *s)
-{
-	unsigned long long	t = x;
-	size_t	i, r=1;
-
-	while ( t >= 10 ) {
-		t /= 10;
-		r++;
-	}
-
-	if (s == 0)
-		return r;
-
-	for (i = r; i != 0; i--) {
-		s[i-1] = (char)(x % 10) + '0';
-		x /= 10;
-	}
-
-	s[r] = 0;
-	return r;
-}
-
-int strncmpi(const char *s1, const char *s2, size_t cchars)
-{
-	char c1, c2;
-
-	if ( s1==s2 )
-		return 0;
-
-	if ( s1==0 )
-		return -1;
-
-	if ( s2==0 )
-		return 1;
-
-	if ( cchars==0 )
-		return 0;
-
-	do {
-		c1 = lowcase_a(*s1);
-		c2 = lowcase_a(*s2);
-		++s1;
-		++s2;
-		cchars--;
-	} while ( (c1 != 0) && (c1 == c2) && (cchars>0) );
-
-	return (int)(c1 - c2);
-}
-
-int strcmpi(const char *s1, const char *s2)
-{
-        char c1, c2;
-
-        if ( s1==s2 )
-                return 0;
-
-        if ( s1==0 )
-                return -1;
-
-        if ( s2==0 )
-                return 1;
-
-        do {
-                c1 = lowcase_a(*s1);
-                c2 = lowcase_a(*s2);
-                ++s1;
-                ++s2;
-        } while ( (c1 != 0) && (c1 == c2) );
-
-        return (int)(c1 - c2);
-}
 
 int delete_last_slash(char *s)
 {
@@ -281,10 +177,10 @@ char *finalpath(char *root_dir, char *current_dir, char *params, char *result_pa
 	if (params != NULL)
 		total_len += strlen(params);
 
-	if (total_len >= PATH_MAX*4)
+	if (total_len >= SIZE_OF_GPBUFFER)
 		return NULL;
 
-	tmp = x_malloc(PATH_MAX*4);
+	tmp = x_malloc(SIZE_OF_GPBUFFER);
 
 	strcpy(result_path, root_dir);
 	add_last_slash(result_path);
@@ -454,63 +350,27 @@ ssize_t writeconsolestr(const char *Buffer)
 
 int writelogentry(PFTPCONTEXT context, const char *logtext1, const char *logtext2)
 {
-	char		cvbuf[32], _text[PATH_MAX*4];
+	char		text[SIZE_OF_GPBUFFER];
 	time_t		itm = time(NULL);
 	struct tm	ltm;
 
 	localtime_r(&itm, &ltm);
 
-	_text[0] = 0;
-
-	if ( ltm.tm_mday < 10 )
-		strcat(_text, "0");
-	ultostr(ltm.tm_mday, cvbuf);
-	strcat(_text, cvbuf);
-	strcat(_text, "-");
-
-	if ( ltm.tm_mon+1 < 10 )
-		strcat(_text, "0");
-	ultostr(ltm.tm_mon+1, cvbuf);
-	strcat(_text, cvbuf);
-	strcat(_text, "-");
-
-	ultostr(ltm.tm_year+1900, cvbuf);
-	strcat(_text, cvbuf);
-	strcat(_text, " ");
-
-	if ( ltm.tm_hour < 10 )
-		strcat(_text, "0");
-	ultostr(ltm.tm_hour, cvbuf);
-	strcat(_text, cvbuf);
-	strcat(_text, ":");
-
-	if ( ltm.tm_min < 10 )
-		strcat(_text, "0");
-	ultostr(ltm.tm_min, cvbuf);
-	strcat(_text, cvbuf);
-	strcat(_text, ":");
-
-	if ( ltm.tm_sec < 10 )
-		strcat(_text, "0");
-	ultostr(ltm.tm_sec, cvbuf);
-	strcat(_text, cvbuf);
-
-	if (context) {
-		strcat(_text, " S-id=");
-		ultostr(context->SessionID, cvbuf);
-		strcat(_text, cvbuf);
+	if (context == NULL)
+	{
+		snprintf(text, sizeof(text), "%02u-%02u-%u %02u:%02u:%02u : %s%s\r\n",
+				ltm.tm_mday, ltm.tm_mon+1, ltm.tm_year+1900,
+				ltm.tm_hour, ltm.tm_min, ltm.tm_sec, logtext1, logtext2);
 	}
-	strcat(_text, ": ");
+	else
+	{
+		snprintf(text, sizeof(text), "%02u-%02u-%u %02u:%02u:%02u S-id=%u : %s%s\r\n",
+				ltm.tm_mday, ltm.tm_mon+1, ltm.tm_year+1900,
+				ltm.tm_hour, ltm.tm_min, ltm.tm_sec,
+				context->SessionID, logtext1, logtext2);
+	}
 
-	if (logtext1)
-		strcat(_text, logtext1);
-
-	if (logtext2)
-		strcat(_text, logtext2);
-
-	strcat(_text, CRLF);
-
-	return writeconsolestr(_text);
+	return writeconsolestr(text);
 }
 
 void WorkerThreadCleanup(PFTPCONTEXT context)
@@ -561,7 +421,7 @@ int ftpUSER(PFTPCONTEXT context, const char *params)
 
 int ftpQUIT(PFTPCONTEXT context, const char *params)
 {
-	writelogentry(context, " QUIT", NULL);
+	writelogentry(context, " QUIT", "");
 	sendstring(context, success221);
 	return 0;
 }
@@ -644,7 +504,7 @@ int ftpPORT(PFTPCONTEXT context, const char *params)
 
 int list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *entry)
 {
-	char			_text[PATH_MAX*4], *p;
+	char			text[SIZE_OF_GPBUFFER], *sacl;
 	struct stat		filestats;
 	struct tm		ftm_fields;
 	time_t			deltatime;
@@ -654,81 +514,37 @@ int list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *
 	if (strcmp(entry->d_name, "..") == 0)
 		return 1;
 
-	strcpy(_text, dirname);
-	add_last_slash(_text);
-	strcat(_text, entry->d_name);
+	strcpy(text, dirname);
+	add_last_slash(text);
+	strcat(text, entry->d_name);
 
-	if ( stat(_text, &filestats) == 0 )
+	if ( stat(text, &filestats) == 0 )
 	{
 		if ( S_ISDIR(filestats.st_mode) )
-			strcpy(_text, "drwxrwxrwx ");
+			sacl = "drwxrwxrwx";
 		else
-			strcpy(_text, "-rw-rw-rw- ");
+			sacl = "-rw-rw-rw-";
 
-		p = &_text[11];
-		p += u64tostr(filestats.st_nlink, p);
-		strcpy(p, " 9001 9001 ");
-		p+=11;
+		localtime_r(&filestats.st_mtime, &ftm_fields);
+		deltatime = time(NULL) - filestats.st_mtime;
 
-		p += u64tostr(filestats.st_size, p);
-		strcpy(p, " ");
-		++p;
-
-		localtime_r(&filestats.st_mtim.tv_sec, &ftm_fields);
-
-		/* month */
-		strncpy(p, &shortmonths[(ftm_fields.tm_mon) * 3], 3);
-		p+=3;
-		strcpy(p, " ");
-		++p;
-
-		/* day of month */
-		if (ftm_fields.tm_mday < 10)
-		{
-			strcpy(p, "0");
-			++p;
-		}
-		p += ultostr(ftm_fields.tm_mday, p);
-		strcpy(p, " ");
-		++p;
-
-		deltatime = time(NULL) - filestats.st_mtim.tv_sec;
-		if (deltatime > 180*24*60*60) {
-			/* year */
-			p += ultostr(ftm_fields.tm_year + 1900, p);
+		if (deltatime <= 180*24*60*60) {
+			snprintf(text, sizeof(text), "%s %lu 9001 9001 %llu %s %02u %02u:%02u %s\r\n",
+				sacl, filestats.st_nlink, (unsigned long long int)filestats.st_size,
+				shortmonths[(ftm_fields.tm_mon)], ftm_fields.tm_mday,
+				ftm_fields.tm_hour, ftm_fields.tm_min, entry->d_name);
 		}
 		else
 		{
-			/* hours */
-			if (ftm_fields.tm_hour < 10)
-			{
-				strcpy(p, "0");
-				++p;
-			}
-			p += ultostr(ftm_fields.tm_hour, p);
-			strcpy(p, ":");
-			++p;
-
-			/* minutes */
-			if (ftm_fields.tm_min < 10)
-			{
-				strcpy(p, "0");
-				++p;
-			}
-			p += ultostr(ftm_fields.tm_min, p);
-
+			snprintf(text, sizeof(text), "%s %lu 9001 9001 %llu %s %02u %02u %s\r\n",
+				sacl, filestats.st_nlink, (unsigned long long int)filestats.st_size,
+				shortmonths[(ftm_fields.tm_mon)], ftm_fields.tm_mday,
+				ftm_fields.tm_year + 1900, entry->d_name);
 		}
-		strcpy(p, " ");
-		++p;
 
-		if (sendstring_auto(s, session, _text) <= 0)
-			return 0;
 	}
 
-	if (sendstring_auto(s, session, entry->d_name) <= 0)
-		return 0;
-
-	return sendstring_auto(s, session, CRLF);
+	return sendstring_auto(s, session, text);
 }
 
 void *list_thread(PFTPCONTEXT context)
@@ -773,7 +589,7 @@ void *list_thread(PFTPCONTEXT context)
 	if (clientsocket != INVALID_SOCKET)
 		close(clientsocket);
 
-	writelogentry(context, " LIST complete", NULL);
+	writelogentry(context, " LIST complete", "");
 
 	if (clientsocket == INVALID_SOCKET) {
 		sendstring(context, error451);
@@ -847,7 +663,7 @@ int ftpCDUP(PFTPCONTEXT context, const char *params)
 	delete_last_slash(context->CurrentDir);
 	filepath(context->CurrentDir);
 
-	writelogentry(context, " CDUP", NULL);
+	writelogentry(context, " CDUP", "");
 	return sendstring(context, success250);
 }
 
@@ -971,7 +787,7 @@ void *retr_thread(PFTPCONTEXT context)
     if (buffer != NULL) {
 	    sprintf(buffer,  " RETR complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
 	    	sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
-        writelogentry(context, buffer, NULL);
+        writelogentry(context, buffer, "");
         free(buffer);
     }
 
@@ -1120,31 +936,26 @@ int ftpPASV(PFTPCONTEXT context, const char *params)
 	if ((context->ClientIPv4 & g_cfg.LocalIPMask) == (context->ServerIPv4 & g_cfg.LocalIPMask))
 	{
 		context->DataIPv4 = context->ServerIPv4;
-		writelogentry(context, " local client.", NULL);
+		writelogentry(context, " local client.", "");
 	} else {
 		context->DataIPv4 = g_cfg.ExternalInterface;
-		writelogentry(context, " nonlocal client.", NULL);
+		writelogentry(context, " nonlocal client.", "");
 	}
 
 	context->DataPort = laddr.sin_port;
 	context->DataSocket = datasocket;
 	context->Mode = MODE_PASSIVE;
 
-	sendstring(context, success227);
-	for (c = 0; c < 4; c++) {
-		ultostr((context->DataIPv4 >> (c*8)) & 0xff, context->GPBuffer);
-		strcat(context->GPBuffer, ",");
-		sendstring(context, context->GPBuffer);
-	}
+	snprintf(context->GPBuffer, SIZE_OF_GPBUFFER, "%s%u,%u,%u,%u,%u,%u).\r\n",
+			success227,
+			context->DataIPv4 & 0xff,
+			(context->DataIPv4 >> 8) & 0xff,
+			(context->DataIPv4 >> 16) & 0xff,
+			(context->DataIPv4 >> 24) & 0xff,
+			context->DataPort & 0xff,
+			(context->DataPort >> 8) & 0xff);
 
-	ultostr(context->DataPort & 0xff, context->GPBuffer);
-	strcat(context->GPBuffer, ",");
-	sendstring(context, context->GPBuffer);
-	ultostr((context->DataPort >> 8) & 0xff, context->GPBuffer);
-	strcat(context->GPBuffer, ").");
-	strcat(context->GPBuffer, CRLF);
-
-	writelogentry(context, " entering passive mode", NULL);
+	writelogentry(context, " entering passive mode", "");
 
 	return sendstring(context, context->GPBuffer);
 }
@@ -1170,17 +981,18 @@ int ftpPASS(PFTPCONTEXT context, const char *params)
 
 		context->Access = FTP_ACCESS_NOT_LOGGED_IN;
 		do {
-			if ( strcmpi(temptext, "admin") == 0 ) {
+
+			if ( strcasecmp(temptext, "admin") == 0 ) {
 				context->Access = FTP_ACCESS_FULL;
 				break;
 			}
 
-			if ( strcmpi(temptext, "upload") == 0 ) {
+			if ( strcasecmp(temptext, "upload") == 0 ) {
 				context->Access = FTP_ACCESS_CREATENEW;
 				break;
 			}
 
-			if ( strcmpi(temptext, "readonly") == 0 ) {
+			if ( strcasecmp(temptext, "readonly") == 0 ) {
 				context->Access = FTP_ACCESS_READONLY;
 				break;
 			}
@@ -1188,7 +1000,7 @@ int ftpPASS(PFTPCONTEXT context, const char *params)
 			return sendstring(context, error530_b);
 		} while (0);
 
-		writelogentry(context, " PASS->successful logon", NULL);
+		writelogentry(context, " PASS->successful logon", "");
 	}
 	else
 		return sendstring(context, error530_r);
@@ -1205,9 +1017,9 @@ int ftpREST(PFTPCONTEXT context, const char *params)
 		return sendstring(context, error501);
 
 	context->RestPoint = strtoull(params, NULL, 10);
-	sendstring(context, interm350);
-	u64tostr(context->RestPoint, context->GPBuffer);
-	strcat(context->GPBuffer, CRLF);
+	snprintf(context->GPBuffer, SIZE_OF_GPBUFFER, "%s %llu\r\n",
+			interm350, (unsigned long long int)context->RestPoint);
+
 	return sendstring(context, context->GPBuffer);
 }
 
@@ -1228,9 +1040,8 @@ int ftpSIZE(PFTPCONTEXT context, const char *params)
 
 	if ( stat(context->GPBuffer, &filestats) == 0 )
 	{
-		sendstring(context, "213 ");
-		u64tostr(filestats.st_size, context->GPBuffer);
-		strcat(context->GPBuffer, CRLF);
+		snprintf(context->GPBuffer, SIZE_OF_GPBUFFER, "213 %llu\r\n",
+				(unsigned long long int)filestats.st_size);
 		sendstring(context, context->GPBuffer);
 	}
 	else
@@ -1361,7 +1172,7 @@ void *stor_thread(PFTPCONTEXT context)
 		dtx = lt1 - lt0;
 		sprintf(buffer,  " STOR complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
 				sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
-		writelogentry(context, buffer, NULL);
+		writelogentry(context, buffer, "");
 		free(buffer);
 	}
 
@@ -1499,7 +1310,7 @@ void *append_thread(PFTPCONTEXT context)
 	if (clientsocket != INVALID_SOCKET)
 		close(clientsocket);
 
-	writelogentry(context, " STOR complete", NULL);
+	writelogentry(context, " STOR complete", "");
 
 	if (clientsocket == INVALID_SOCKET) {
 		sendstring(context, error451);
@@ -1612,7 +1423,7 @@ int ftpRNTO(PFTPCONTEXT context, const char *params)
 	if ( params == NULL )
 		return sendstring(context, error501);
 
-	_text = x_malloc(PATH_MAX * 4);
+	_text = x_malloc(SIZE_OF_GPBUFFER);
 
 	if (finalpath(
 			context->RootDir,
@@ -1645,7 +1456,7 @@ int ftpAUTH(PFTPCONTEXT context, const char *params)
 	if ( params == NULL )
 		return sendstring(context, error501);
 
-	if ( strcmpi(params, "TLS") == 0 )
+	if ( strcasecmp(params, "TLS") == 0 )
 		/* InitTLSSession will send reply */
 		return InitTLSSession(&context->TLS_session, context->ControlSocket, 1);
 	else
@@ -1694,7 +1505,7 @@ int ftpPROT (PFTPCONTEXT context, const char *params)
 
 int mlsd_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *entry)
 {
-	char			_text[PATH_MAX*4], *p;
+	char			text[SIZE_OF_GPBUFFER], *entrytype, *sizetype;
 	struct stat		filestats;
 	struct tm		ftm_fields;
 
@@ -1703,76 +1514,34 @@ int mlsd_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *
 	if (strcmp(entry->d_name, "..") == 0)
 		return 1;
 
-	strcpy(_text, dirname);
-	add_last_slash(_text);
-	strcat(_text, entry->d_name);
+	strcpy(text, dirname);
+	add_last_slash(text);
+	strcat(text, entry->d_name);
 
-	if ( stat(_text, &filestats) == 0 )
+	if ( stat(text, &filestats) == 0 )
 	{
-		strcpy(_text, "type=");
 		if ( S_ISDIR(filestats.st_mode) )
-			strcat(_text, "dir;sizd=");
+		{
+			entrytype = "dir";
+			sizetype = "sizd";
+		}
 		else
-			strcat(_text, "file;size=");
+		{
+			entrytype = "file";
+			sizetype = "size";
+		}
 
-		p = &_text[0] + strlen(_text);
-		p += u64tostr(filestats.st_size, p);
-		strcpy(p, ";modify=");
-
-		localtime_r(&filestats.st_mtim.tv_sec, &ftm_fields);
+		localtime_r(&filestats.st_mtime, &ftm_fields);
 		++ftm_fields.tm_mon;
 
-		p = &_text[0] + strlen(_text);
-		p += ultostr(ftm_fields.tm_year + 1900, p);
-
-		if (ftm_fields.tm_mon < 10)
-		{
-			strcpy(p, "0");
-			++p;
-		}
-		p += ultostr(ftm_fields.tm_mon, p);
-
-		/* day of month */
-		if (ftm_fields.tm_mday < 10)
-		{
-			strcpy(p, "0");
-			++p;
-		}
-		p += ultostr(ftm_fields.tm_mday, p);
-
-		/* hours */
-		if (ftm_fields.tm_hour < 10)
-		{
-			strcpy(p, "0");
-			++p;
-		}
-		p += ultostr(ftm_fields.tm_hour, p);
-
-		/* minutes */
-		if (ftm_fields.tm_min < 10)
-		{
-			strcpy(p, "0");
-			++p;
-		}
-		p += ultostr(ftm_fields.tm_min, p);
-
-		/* seconds */
-		if (ftm_fields.tm_sec < 10)
-		{
-			strcpy(p, "0");
-			++p;
-		}
-		p += ultostr(ftm_fields.tm_sec, p);
-
-		strcpy(p, "; ");
-		if (sendstring_auto(s, session, _text) <= 0)
-			return 0;
+		snprintf(text, sizeof(text), "type=%s;%s=%llu;modify=%u%02u%02u%02u%02u%02u; %s\r\n",
+				entrytype, sizetype, (unsigned long long int)filestats.st_size,
+				ftm_fields.tm_year + 1900, ftm_fields.tm_mon, ftm_fields.tm_mday,
+				ftm_fields.tm_hour, ftm_fields.tm_min, ftm_fields.tm_sec, entry->d_name
+				);
 	}
 
-	if (sendstring_auto(s, session, entry->d_name) <= 0)
-		return 0;
-
-	return sendstring_auto(s, session, CRLF);
+	return sendstring_auto(s, session, text);
 }
 
 void *msld_thread(PFTPCONTEXT context)
@@ -1817,7 +1586,7 @@ void *msld_thread(PFTPCONTEXT context)
 	if (clientsocket != INVALID_SOCKET)
 		close(clientsocket);
 
-	writelogentry(context, " LIST complete", NULL);
+	writelogentry(context, " LIST complete", "");
 
 	if (clientsocket == INVALID_SOCKET) {
 		sendstring(context, error451);
@@ -1857,7 +1626,7 @@ int ftpMLSD(PFTPCONTEXT context, const char *params)
 			break;
 
 		sendstring(context, interm150);
-		writelogentry(context, " MLSD-LIST", (char *)params);
+		writelogentry(context, " MLSD-LIST ", (char *)params);
 		context->WorkerThreadAbort = 0;
 
 		pthread_mutex_lock(&context->MTLock);
@@ -1913,7 +1682,7 @@ int recvcmd(PFTPCONTEXT context, char *buffer, size_t buffer_size)
 void *ftp_client_thread(SOCKET *s)
 {
 	FTPCONTEXT				ctx __attribute__ ((aligned (16)));
-	char					*cmd, *params, rcvbuf[PATH_MAX*2];
+	char					*cmd, *params, rcvbuf[FTP_PATH_MAX*2];
 	int						c, cmdno, rv;
 	size_t					i, cmdlen;
 	socklen_t				asz;
@@ -1923,7 +1692,7 @@ void *ftp_client_thread(SOCKET *s)
 	memset(&ctx, 0, sizeof(ctx));
 	ctx.Access = FTP_ACCESS_NOT_LOGGED_IN;
 	ctx.ControlSocket = *s;
-	ctx.GPBuffer = x_malloc(PATH_MAX*4);
+	ctx.GPBuffer = x_malloc(SIZE_OF_GPBUFFER);
 
 	memset(&laddr, 0, sizeof(laddr));
 	asz = sizeof(laddr);
@@ -1957,11 +1726,15 @@ void *ftp_client_thread(SOCKET *s)
 
 		memset(&rcvbuf, 0, sizeof(rcvbuf));
 
-		inet_ntop(AF_INET, &laddr.sin_addr, rcvbuf, INET_ADDRSTRLEN+1);
-		strcat(rcvbuf, ":");
-		cmdlen = strlen(rcvbuf);
-		ultostr(ntohs(laddr.sin_port), &rcvbuf[cmdlen]);
-		writelogentry(&ctx, "<- New user IP=", rcvbuf);
+		snprintf(rcvbuf, sizeof(rcvbuf), "<- New user IP=%u.%u.%u.%u:%u",
+				laddr.sin_addr.s_addr & 0xff,
+				(laddr.sin_addr.s_addr >> 8 ) & 0xff,
+				(laddr.sin_addr.s_addr >> 16 ) & 0xff,
+				(laddr.sin_addr.s_addr >> 24 ) & 0xff,
+				ntohs(laddr.sin_port)
+				);
+
+		writelogentry(&ctx, rcvbuf, "");
 
 		while ( ctx.ControlSocket != INVALID_SOCKET ) {
 			if ( !recvcmd(&ctx, rcvbuf, sizeof(rcvbuf)) )
@@ -1986,7 +1759,7 @@ void *ftp_client_thread(SOCKET *s)
 
 			cmdno = -1;
 			for (c=0; c<MAX_CMDS; c++)
-				if (strncmpi(cmd, ftpcmds[c], cmdlen) == 0)
+				if (strncasecmp(cmd, ftpcmds[c], cmdlen) == 0)
 				{
 					cmdno = c;
 					rv = ftpprocs[c](&ctx, params);
@@ -2009,7 +1782,7 @@ void *ftp_client_thread(SOCKET *s)
 
 		pthread_mutex_destroy(&ctx.MTLock);
 		pthread_mutexattr_destroy(&m_attr);
-		writelogentry(&ctx, "User disconnected", NULL);
+		writelogentry(&ctx, "User disconnected", "");
 		break;
 	}
 
@@ -2062,7 +1835,7 @@ void *ftpmain(void *p)
 		return 0;
 	}
 
-	writelogentry(NULL, success220, NULL);
+	writelogentry(NULL, success220, "");
 
 	socketret = listen(ftpsocket, SOMAXCONN);
 	while ( socketret == 0 ) {

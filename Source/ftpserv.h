@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Feb 09, 2018
+*  Modified on: Jun 28, 2018
 *
 *      Author: lightftp
 */
@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <time.h>
 #include <fcntl.h>
@@ -66,6 +67,10 @@ typedef struct _FTP_CONFIG {
 #define FTP_ACCESS_FULL				3
 
 #define TRANSMIT_BUFFER_SIZE	65536
+
+static const unsigned long int	FTP_PATH_MAX = PATH_MAX;
+
+#define	SIZE_OF_GPBUFFER		4*FTP_PATH_MAX
 
 typedef struct	_FTPCONTEXT {
 	pthread_mutex_t		MTLock;
@@ -146,7 +151,7 @@ static const char success211[]		=
 		"SIZE\r\n MLSD\r\n AUTH TLS\r\n PBSZ\r\n PROT\r\n";
 static const char success211_end[]	= "211 End.\r\n";
 static const char success215[]		= "215 Windows_NT Type: L8\r\n";
-static const char success220[]		= "220 LightFTP server v2.0 ready\r\n";
+static const char success220[]		= "220 LightFTP server v2.0a ready\r\n";
 static const char success221[]		= "221 Goodbye!\r\n";
 static const char success226[]		= "226 Transfer complete. Closing data connection.\r\n";
 static const char success227[]		= "227 Entering Passive Mode (";
@@ -177,8 +182,9 @@ static const char interm350_ren[]	= "350 File exists. Ready to rename.\r\n";
 static const char interm331[]		= "331 User ";
 static const char interm331_tail[]  = " OK. Password required\r\n";
 static const char NOSLOTS[]			= "MAXIMUM ALLOWED USERS CONNECTED\r\n";
-static const char CRLF[]			= "\r\n";
 
-static const char shortmonths[]		= "JanFebMarAprMayJunJulAugSepOctNovDec";
+static const char shortmonths[12][4] = {
+		"Jan\0", "Feb\0", "Mar\0", "Apr\0", "May\0", "Jun\0",
+		"Jul\0", "Aug\0", "Sep\0", "Oct\0", "Nov\0", "Dec\0"};
 
 #endif /* FTPSERV_H_ */
