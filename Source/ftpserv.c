@@ -34,46 +34,43 @@ static const char *ftpcmds[MAX_CMDS] = {
 
 unsigned int g_newid = 0;
 
-int delete_last_slash(char *s)
+void delete_last_slash(char *s)
 {
-	if (*s == 0)
-		return 0;
-
-	/*
-	 * don't remove root directory sign as special case
-	 */
-	if ((s[0] == '/') && (s[1] == 0))
-		return 0;
-
-	while (s[1] != 0)
-		++s;
-
-	if (*s == '/') {
-		*s = 0;
-		return 1;
-	}
-	else
-		return 0;
-}
-
-int add_last_slash(char *s)
-{
-	if (*s == 0)
-		return 0;
-
-	while (s[1] != 0)
-		++s;
-
-	if (*s == '/')
-		return 0;
-	else
+	if (*s != 0)
 	{
-		s[1] = '/';
-		s[2] = 0;
-		return 1;
+		/*
+		 * don't remove root directory sign as special case
+		 */
+		if ((s[0] == '/') && (s[1] == 0))
+			return;
+
+		while (s[1] != 0)
+			++s;
+
+		if (*s == '/')
+			*s = 0;
 	}
 }
 
+void add_last_slash(char *s)
+{
+	if (*s != 0)
+	{
+		while (s[1] != 0)
+			++s;
+
+		if (*s != '/')
+		{
+			s[1] = '/';
+			s[2] = 0;
+		}
+	}
+}
+
+/*
+ * Cuts off filename from string leaving only path.
+ * Return value: pointer to a terminating null character at the end of path
+ */
 char *filepath(char *s)
 {
 	char	*p = s;
@@ -103,7 +100,7 @@ char *filepath(char *s)
 /*
  * This function filters the path out of ".." members
  * not allowing user to escape the home directory
-*/
+ */
 void format_path(char *input_path, char *filtered_path)
 {
 	char	*p0, *pnext, *fp0;
@@ -412,7 +409,12 @@ int ftpUSER(PFTPCONTEXT context, const char *params)
 		return sendstring(context, error501);
 
 	context->Access = FTP_ACCESS_NOT_LOGGED_IN;
+
+	/*
+	 * Save username in GPBuffer for next PASS command
+	 */
 	strcpy(context->GPBuffer, params);
+
 	writelogentry(context, " USER: ", (char *)params);
 	sendstring(context, interm331);
 	sendstring(context, params);
@@ -423,6 +425,9 @@ int ftpQUIT(PFTPCONTEXT context, const char *params)
 {
 	writelogentry(context, " QUIT", "");
 	sendstring(context, success221);
+	/*
+	 * retrun 0 to break command processing loop
+	 */
 	return 0;
 }
 
@@ -436,9 +441,10 @@ int ftpPWD(PFTPCONTEXT context, const char *params)
 	if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
 		return sendstring(context, error530);
 
-	sendstring(context, "257 \"");
-	sendstring(context, context->CurrentDir);
-	return sendstring(context, "\" is a current directory.\r\n");
+	strcpy(context->GPBuffer, "257 \"");
+	strcat(context->GPBuffer, context->CurrentDir);
+	strcat(context->GPBuffer, "\" is a current directory.\r\n");
+	return sendstring(context, context->GPBuffer);
 }
 
 int ftpTYPE(PFTPCONTEXT context, const char *params)
@@ -968,6 +974,10 @@ int ftpPASS(PFTPCONTEXT context, const char *params)
 		return sendstring(context, error501);
 
 	memset(temptext, 0, sizeof(temptext));
+
+	/*
+	 * we have username saved in context->GPBuffer from USER command
+	 */
 	if (!ParseConfig(g_cfg.ConfigFile, context->GPBuffer, "pswd", temptext, sizeof(temptext)))
 		return sendstring(context, error530_r);
 
