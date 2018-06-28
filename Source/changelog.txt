@@ -4,7 +4,7 @@
 
 Jun 28, 2018, v2.0a
 
-+ simplify path processing functions
++ simplify path processing functions.
 + old lame string formatting refactored
 
 Feb 8, 2018, v2.0
