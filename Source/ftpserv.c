@@ -16,14 +16,14 @@ static const FTPROUTINE ftpprocs[MAX_CMDS] = {
 	ftpUSER, ftpQUIT, ftpNOOP, ftpPWD, ftpTYPE, ftpPORT, ftpLIST, ftpCDUP,
 	ftpCWD, ftpRETR, ftpABOR, ftpDELE, ftpPASV, ftpPASS, ftpREST, ftpSIZE,
 	ftpMKD, ftpRMD, ftpSTOR, ftpSYST, ftpFEAT, ftpAPPE, ftpRNFR, ftpRNTO,
-	ftpOPTS, ftpMLSD, ftpAUTH, ftpPBSZ, ftpPROT
+	ftpOPTS, ftpMLSD, ftpAUTH, ftpPBSZ, ftpPROT, ftpEPSV
 };
 
 static const char *ftpcmds[MAX_CMDS] = {
 	"USER", "QUIT", "NOOP", "PWD",  "TYPE", "PORT", "LIST", "CDUP",
 	"CWD",  "RETR", "ABOR", "DELE", "PASV", "PASS", "REST", "SIZE",
 	"MKD",  "RMD",  "STOR", "SYST", "FEAT", "APPE", "RNFR", "RNTO",
-	"OPTS", "MLSD", "AUTH", "PBSZ", "PROT"
+	"OPTS", "MLSD", "AUTH", "PBSZ", "PROT", "EPSV"
 };
 
 /*
@@ -895,65 +895,104 @@ int ftpDELE(PFTPCONTEXT context, const char *params)
 	return 1;
 }
 
-int ftpPASV(PFTPCONTEXT context, const char *params)
+int pasv(PFTPCONTEXT context)
 {
 	SOCKET				datasocket;
 	struct sockaddr_in	laddr;
-	int					socketret = -1;
+	int					socketret = -1, result = 0;
 	unsigned long		c;
 	struct	timespec	rtctime;
 
-	if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
-		return sendstring(context, error530);
-	if ( context->WorkerThreadValid == 0 )
-		return sendstring(context, error550_t);
-	if ( context->DataSocket != INVALID_SOCKET )
-		close(context->DataSocket);
-
-	context->DataSocket = INVALID_SOCKET;
-
-	datasocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (datasocket == INVALID_SOCKET)
-		return sendstring(context, error451);
-
-	for (c = g_cfg.PasvPortBase; c <= g_cfg.PasvPortMax; c++) {
-		clock_gettime(CLOCK_REALTIME, &rtctime);
-		memset(&laddr, 0, sizeof(laddr));
-		laddr.sin_family = AF_INET;
-		laddr.sin_port = htons((in_port_t)(g_cfg.PasvPortBase +
-			(rtctime.tv_nsec % (g_cfg.PasvPortMax-g_cfg.PasvPortBase))));
-		laddr.sin_addr.s_addr = context->ServerIPv4;
-		socketret = bind(datasocket, (struct sockaddr *)&laddr, sizeof(laddr));
-		if ( socketret == 0 )
-			break;
-	}
-
-	if ( socketret != 0 ) {
-		close(datasocket);
-		return sendstring(context, error451);
-	}
-
-	socketret = listen(datasocket, SOMAXCONN);
-	if (socketret != 0) {
-		close(datasocket);
-		return sendstring(context, error451);
-	}
-
-	if ((context->ClientIPv4 & g_cfg.LocalIPMask) == (context->ServerIPv4 & g_cfg.LocalIPMask))
+	while (1)
 	{
-		context->DataIPv4 = context->ServerIPv4;
-		writelogentry(context, " local client.", "");
-	} else {
-		context->DataIPv4 = g_cfg.ExternalInterface;
-		writelogentry(context, " nonlocal client.", "");
+		if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+		{
+			sendstring(context, error530);
+			break;
+		}
+
+		if ( context->WorkerThreadValid == 0 )
+		{
+			sendstring(context, error550_t);
+			break;
+		}
+
+		if ( context->DataSocket != INVALID_SOCKET )
+			close(context->DataSocket);
+
+		context->DataSocket = INVALID_SOCKET;
+
+		datasocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (datasocket == INVALID_SOCKET)
+		{
+			sendstring(context, error451);
+			break;
+		}
+
+		for (c = g_cfg.PasvPortBase; c <= g_cfg.PasvPortMax; c++) {
+			clock_gettime(CLOCK_REALTIME, &rtctime);
+			memset(&laddr, 0, sizeof(laddr));
+			laddr.sin_family = AF_INET;
+			laddr.sin_port = htons((in_port_t)(g_cfg.PasvPortBase +
+				(rtctime.tv_nsec % (g_cfg.PasvPortMax-g_cfg.PasvPortBase))));
+			laddr.sin_addr.s_addr = context->ServerIPv4;
+			socketret = bind(datasocket, (struct sockaddr *)&laddr, sizeof(laddr));
+			if ( socketret == 0 )
+				break;
+		}
+
+		if ( socketret != 0 ) {
+			close(datasocket);
+			sendstring(context, error451);
+			break;
+		}
+
+		socketret = listen(datasocket, SOMAXCONN);
+		if (socketret != 0) {
+			close(datasocket);
+			sendstring(context, error451);
+			break;
+		}
+
+		if ((context->ClientIPv4 & g_cfg.LocalIPMask) == (context->ServerIPv4 & g_cfg.LocalIPMask))
+		{
+			context->DataIPv4 = context->ServerIPv4;
+			writelogentry(context, " local client.", "");
+		} else {
+			context->DataIPv4 = g_cfg.ExternalInterface;
+			writelogentry(context, " nonlocal client.", "");
+		}
+
+		context->DataPort = laddr.sin_port;
+		context->DataSocket = datasocket;
+		context->Mode = MODE_PASSIVE;
+
+		result = 1;
+		break;
 	}
 
-	context->DataPort = laddr.sin_port;
-	context->DataSocket = datasocket;
-	context->Mode = MODE_PASSIVE;
+	return result;
+}
 
-	snprintf(context->GPBuffer, SIZE_OF_GPBUFFER, "%s%u,%u,%u,%u,%u,%u).\r\n",
-			success227,
+int ftpEPSV (PFTPCONTEXT context, const char *params)
+{
+	if (pasv(context) == 0)
+		return 1;
+
+	snprintf(context->GPBuffer, SIZE_OF_GPBUFFER, success229,
+			ntohs(context->DataPort));
+
+	writelogentry(context, " entering extended passive mode", "");
+
+	return sendstring(context, context->GPBuffer);
+}
+
+int ftpPASV(PFTPCONTEXT context, const char *params)
+{
+	if (pasv(context) == 0)
+		return 1;
+
+	snprintf(context->GPBuffer, SIZE_OF_GPBUFFER, success227,
 			context->DataIPv4 & 0xff,
 			(context->DataIPv4 >> 8) & 0xff,
 			(context->DataIPv4 >> 16) & 0xff,

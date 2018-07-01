@@ -111,7 +111,7 @@ extern void *ftpmain(void *p);
 extern gnutls_certificate_credentials_t		x509_cred;
 extern gnutls_priority_t					priority_cache;
 
-#define	MAX_CMDS 29
+#define	MAX_CMDS 30
 
 int ftpUSER	(PFTPCONTEXT context, const char *params);
 int ftpQUIT	(PFTPCONTEXT context, const char *params);
@@ -142,19 +142,21 @@ int ftpMLSD	(PFTPCONTEXT context, const char *params);
 int ftpAUTH (PFTPCONTEXT context, const char *params);
 int ftpPBSZ (PFTPCONTEXT context, const char *params);
 int ftpPROT (PFTPCONTEXT context, const char *params);
+int ftpEPSV (PFTPCONTEXT context, const char *params);
 
 static const char success200[]		= "200 Command okay.\r\n";
 static const char success200_1[]	= "200 Type set to A.\r\n";
 static const char success200_2[]	= "200 Type set to I.\r\n";
 static const char success211[]		=
 		"211-Extensions supported:\r\n PASV\r\n UTF8\r\n TVFS\r\n REST STREAM\r\n "
-		"SIZE\r\n MLSD\r\n AUTH TLS\r\n PBSZ\r\n PROT\r\n";
+		"SIZE\r\n MLSD\r\n AUTH TLS\r\n PBSZ\r\n PROT\r\n EPSV\r\n";
 static const char success211_end[]	= "211 End.\r\n";
 static const char success215[]		= "215 Windows_NT Type: L8\r\n";
 static const char success220[]		= "220 LightFTP server v2.0a ready\r\n";
 static const char success221[]		= "221 Goodbye!\r\n";
 static const char success226[]		= "226 Transfer complete. Closing data connection.\r\n";
-static const char success227[]		= "227 Entering Passive Mode (";
+static const char success227[]		= "227 Entering Passive Mode (%u,%u,%u,%u,%u,%u).\r\n";
+static const char success229[]		= "229 Entering Extended Passive Mode (|||%u|)\r\n";
 static const char success230[]		= "230 User logged in, proceed.\r\n";
 static const char success234[]		= "234 AUTH command OK. Initializing TLS connection.\r\n";
 static const char success250[]		= "250 Requested file action okay, completed.\r\n";
