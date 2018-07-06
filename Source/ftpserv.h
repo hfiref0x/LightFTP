@@ -19,15 +19,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <time.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <pthread.h>
-#include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 #include <netinet/in.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -111,7 +110,7 @@ extern void *ftpmain(void *p);
 extern gnutls_certificate_credentials_t		x509_cred;
 extern gnutls_priority_t					priority_cache;
 
-#define	MAX_CMDS 30
+#define	MAX_CMDS 32
 
 int ftpUSER	(PFTPCONTEXT context, const char *params);
 int ftpQUIT	(PFTPCONTEXT context, const char *params);
@@ -143,15 +142,25 @@ int ftpAUTH (PFTPCONTEXT context, const char *params);
 int ftpPBSZ (PFTPCONTEXT context, const char *params);
 int ftpPROT (PFTPCONTEXT context, const char *params);
 int ftpEPSV (PFTPCONTEXT context, const char *params);
+int ftpHELP (PFTPCONTEXT context, const char *params);
+int ftpSITE (PFTPCONTEXT context, const char *params);
 
 static const char success200[]		= "200 Command okay.\r\n";
 static const char success200_1[]	= "200 Type set to A.\r\n";
 static const char success200_2[]	= "200 Type set to I.\r\n";
 static const char success211[]		=
 		"211-Extensions supported:\r\n PASV\r\n UTF8\r\n TVFS\r\n REST STREAM\r\n "
-		"SIZE\r\n MLSD\r\n AUTH TLS\r\n PBSZ\r\n PROT\r\n EPSV\r\n";
-static const char success211_end[]	= "211 End.\r\n";
-static const char success215[]		= "215 Windows_NT Type: L8\r\n";
+		"SIZE\r\n MLSD\r\n AUTH TLS\r\n PBSZ\r\n PROT\r\n EPSV\r\n"
+		"211 End.\r\n";
+
+static const char success214[]		=
+		"214-The following commands are recognized.\r\n"
+		" ABOR APPE AUTH CDUP CWD  DELE EPSV FEAT HELP LIST MKD MLSD NOOP OPTS\r\n"
+		" PASS PASV PBSZ PORT PROT PWD  QUIT REST RETR RMD RNFR RNTO SITE SIZE\r\n"
+		" STOR SYST TYPE USER\r\n"
+		"214 Help OK.\r\n";
+
+static const char success215[]		= "215 UNIX Type: L8\r\n";
 static const char success220[]		= "220 LightFTP server v2.0a ready\r\n";
 static const char success221[]		= "221 Goodbye!\r\n";
 static const char success226[]		= "226 Transfer complete. Closing data connection.\r\n";

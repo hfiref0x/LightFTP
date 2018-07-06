@@ -16,14 +16,14 @@ static const FTPROUTINE ftpprocs[MAX_CMDS] = {
 	ftpUSER, ftpQUIT, ftpNOOP, ftpPWD, ftpTYPE, ftpPORT, ftpLIST, ftpCDUP,
 	ftpCWD, ftpRETR, ftpABOR, ftpDELE, ftpPASV, ftpPASS, ftpREST, ftpSIZE,
 	ftpMKD, ftpRMD, ftpSTOR, ftpSYST, ftpFEAT, ftpAPPE, ftpRNFR, ftpRNTO,
-	ftpOPTS, ftpMLSD, ftpAUTH, ftpPBSZ, ftpPROT, ftpEPSV
+	ftpOPTS, ftpMLSD, ftpAUTH, ftpPBSZ, ftpPROT, ftpEPSV, ftpHELP, ftpSITE
 };
 
 static const char *ftpcmds[MAX_CMDS] = {
 	"USER", "QUIT", "NOOP", "PWD",  "TYPE", "PORT", "LIST", "CDUP",
 	"CWD",  "RETR", "ABOR", "DELE", "PASV", "PASS", "REST", "SIZE",
 	"MKD",  "RMD",  "STOR", "SYST", "FEAT", "APPE", "RNFR", "RNTO",
-	"OPTS", "MLSD", "AUTH", "PBSZ", "PROT", "EPSV"
+	"OPTS", "MLSD", "AUTH", "PBSZ", "PROT", "EPSV", "HELP", "SITE"
 };
 
 /*
@@ -508,9 +508,90 @@ int ftpPORT(PFTPCONTEXT context, const char *params)
 	return sendstring(context, success200);
 }
 
+/*
+filemode.c -- make a string describing file modes
+
+  Copyright (C) 1985, 1990, 1993, 1998-2000, 2004, 2006, 2009-2018 Free
+  Software Foundation, Inc.
+*/
+
+/* Return a character indicating the type of file described by
+   file mode BITS:
+   '-' regular file
+   'b' block special file
+   'c' character special file
+   'C' high performance ("contiguous data") file
+   'd' directory
+   'D' door
+   'l' symbolic link
+   'm' multiplexed file (7th edition Unix; obsolete)
+   'n' network special file (HP-UX)
+   'p' fifo (named pipe)
+   'P' port
+   's' socket
+   'w' whiteout (4.4BSD)
+   '?' some other file type  */
+
+static char
+ftypelet (mode_t bits)
+{
+  /* These are the most common, so test for them first.  */
+  if (S_ISREG (bits))
+    return '-';
+  if (S_ISDIR (bits))
+    return 'd';
+
+  /* Other letters standardized by POSIX 1003.1-2004.  */
+  if (S_ISBLK (bits))
+    return 'b';
+  if (S_ISCHR (bits))
+    return 'c';
+  if (S_ISLNK (bits))
+    return 'l';
+  if (S_ISFIFO (bits))
+    return 'p';
+
+  /* Other file types (though not letters) standardized by POSIX.  */
+  if (S_ISSOCK (bits))
+    return 's';
+
+  return '?';
+}
+
+/* Like filemodestring, but rely only on MODE.  */
+
+void
+strmode (mode_t mode, char *str)
+{
+  str[0] = ftypelet (mode);
+  str[1] = mode & S_IRUSR ? 'r' : '-';
+  str[2] = mode & S_IWUSR ? 'w' : '-';
+  str[3] = (mode & S_ISUID
+            ? (mode & S_IXUSR ? 's' : 'S')
+            : (mode & S_IXUSR ? 'x' : '-'));
+  str[4] = mode & S_IRGRP ? 'r' : '-';
+  str[5] = mode & S_IWGRP ? 'w' : '-';
+  str[6] = (mode & S_ISGID
+            ? (mode & S_IXGRP ? 's' : 'S')
+            : (mode & S_IXGRP ? 'x' : '-'));
+  str[7] = mode & S_IROTH ? 'r' : '-';
+  str[8] = mode & S_IWOTH ? 'w' : '-';
+  str[9] = (mode & S_ISVTX
+            ? (mode & S_IXOTH ? 't' : 'T')
+            : (mode & S_IXOTH ? 'x' : '-'));
+  str[10] = ' ';
+  str[11] = '\0';
+}
+
+/*
+	END  filemode.c
+*/
+
 int list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *entry)
 {
-	char			text[SIZE_OF_GPBUFFER], *sacl;
+	char			text[SIZE_OF_GPBUFFER],
+					sacl[12];
+
 	struct stat		filestats;
 	struct tm		ftm_fields;
 	time_t			deltatime;
@@ -524,26 +605,29 @@ int list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *
 	add_last_slash(text);
 	strcat(text, entry->d_name);
 
-	if ( stat(text, &filestats) == 0 )
+	if ( lstat(text, &filestats) == 0 )
 	{
-		if ( S_ISDIR(filestats.st_mode) )
-			sacl = "drwxrwxrwx";
-		else
-			sacl = "-rw-rw-rw-";
+		strmode(filestats.st_mode, sacl);
 
 		localtime_r(&filestats.st_mtime, &ftm_fields);
 		deltatime = time(NULL) - filestats.st_mtime;
 
 		if (deltatime <= 180*24*60*60) {
-			snprintf(text, sizeof(text), "%s %lu 9001 9001 %llu %s %02u %02u:%02u %s\r\n",
-				sacl, filestats.st_nlink, (unsigned long long int)filestats.st_size,
+			snprintf(text, sizeof(text), "%s %lu %lu %lu %llu %s %02u %02u:%02u %s\r\n",
+				sacl, filestats.st_nlink,
+				(unsigned long int)filestats.st_uid,
+				(unsigned long int)filestats.st_gid,
+				(unsigned long long int)filestats.st_size,
 				shortmonths[(ftm_fields.tm_mon)], ftm_fields.tm_mday,
 				ftm_fields.tm_hour, ftm_fields.tm_min, entry->d_name);
 		}
 		else
 		{
-			snprintf(text, sizeof(text), "%s %lu 9001 9001 %llu %s %02u %02u %s\r\n",
-				sacl, filestats.st_nlink, (unsigned long long int)filestats.st_size,
+			snprintf(text, sizeof(text), "%s %lu %lu %lu %llu %s %02u %02u %s\r\n",
+				sacl, filestats.st_nlink,
+				(unsigned long int)filestats.st_uid,
+				(unsigned long int)filestats.st_gid,
+				(unsigned long long int)filestats.st_size,
 				shortmonths[(ftm_fields.tm_mon)], ftm_fields.tm_mday,
 				ftm_fields.tm_year + 1900, entry->d_name);
 		}
@@ -624,8 +708,10 @@ int ftpLIST(PFTPCONTEXT context, const char *params)
 		return sendstring(context, error550_t);
 
 	if (params != NULL)
-		if (strcmp(params, "-l") == 0)
+	{
+		if ((strcmp(params, "-a") == 0) || (strcmp(params, "-l") == 0))
 			params = NULL;
+	}
 
 	if (finalpath(
 			context->RootDir,
@@ -1297,10 +1383,23 @@ int ftpSYST(PFTPCONTEXT context, const char *params)
 	return sendstring(context, success215);
 }
 
+int ftpHELP(PFTPCONTEXT context, const char *params)
+{
+	return sendstring(context, success214);
+}
+
+int ftpSITE(PFTPCONTEXT context, const char *params)
+{
+	if ( params != NULL )
+		if (strcasecmp(params, "help") == 0)
+			return sendstring(context, "200 chmod\r\n");
+
+	return sendstring(context, error500);
+}
+
 int ftpFEAT(PFTPCONTEXT context, const char *params)
 {
-	sendstring(context, success211);
-	return sendstring(context, success211_end);
+	return sendstring(context, success211);
 }
 
 void *append_thread(PFTPCONTEXT context)
@@ -1497,7 +1596,12 @@ int ftpRNTO(PFTPCONTEXT context, const char *params)
 
 int ftpOPTS(PFTPCONTEXT context, const char *params)
 {
-	return sendstring(context, success200);
+	if ( params != NULL )
+		if (strcasecmp(params, "utf8 on") == 0)
+			return sendstring(context, "200 Always in UTF8 mode.\r\n");
+
+	writelogentry(context, " unsupported OPTS: ", params);
+	return sendstring(context, error500);
 }
 
 int ftpAUTH(PFTPCONTEXT context, const char *params)
@@ -1567,7 +1671,7 @@ int mlsd_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *
 	add_last_slash(text);
 	strcat(text, entry->d_name);
 
-	if ( stat(text, &filestats) == 0 )
+	if ( lstat(text, &filestats) == 0 )
 	{
 		if ( S_ISDIR(filestats.st_mode) )
 		{
@@ -1580,11 +1684,21 @@ int mlsd_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *
 			sizetype = "size";
 		}
 
+		if (S_ISLNK(filestats.st_mode))
+		{
+			entrytype = "OS.unix=slink";
+		}
+
 		localtime_r(&filestats.st_mtime, &ftm_fields);
 		++ftm_fields.tm_mon;
 
-		snprintf(text, sizeof(text), "type=%s;%s=%llu;modify=%u%02u%02u%02u%02u%02u; %s\r\n",
-				entrytype, sizetype, (unsigned long long int)filestats.st_size,
+		snprintf(text, sizeof(text),
+				"type=%s;%s=%llu;UNIX.mode=%lo;UNIX.owner=%lu;UNIX.group=%lu;modify=%u%02u%02u%02u%02u%02u; %s\r\n",
+				entrytype, sizetype,
+				(unsigned long long int)filestats.st_size,
+				(unsigned long int)filestats.st_mode,
+				(unsigned long int)filestats.st_uid,
+				(unsigned long int)filestats.st_gid,
 				ftm_fields.tm_year + 1900, ftm_fields.tm_mon, ftm_fields.tm_mday,
 				ftm_fields.tm_hour, ftm_fields.tm_min, ftm_fields.tm_sec, entry->d_name
 				);
