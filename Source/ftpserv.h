@@ -23,6 +23,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <time.h>
+#include <ctype.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <pthread.h>

@@ -381,10 +381,14 @@ void WorkerThreadCleanup(PFTPCONTEXT context)
 		 * trying to stop gracefully
 		 */
 		context->WorkerThreadAbort = 1;
+		sleep(2);
 
 		err = pthread_join(context->WorkerThreadId, &retv);
 		if ( err != 0)
+		{
+			writelogentry(context, "Enter cancel", "");
 			pthread_cancel(context->WorkerThreadId);
+		}
 
 		context->WorkerThreadValid = -1;
 	}
@@ -401,6 +405,7 @@ void WorkerThreadCleanup(PFTPCONTEXT context)
 
 	context->DataIPv4 = 0;
 	context->DataPort = 0;
+	writelogentry(context, "WorkerThreadCleanup complete", "");
 }
 
 int ftpUSER(PFTPCONTEXT context, const char *params)
@@ -952,6 +957,7 @@ int ftpABOR(PFTPCONTEXT context, const char *params)
 	if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
 		return sendstring(context, error530);
 
+	writelogentry(context, " ABORT command", NULL);
 	WorkerThreadCleanup(context);
 	return sendstring(context, success226);
 }
@@ -1904,16 +1910,16 @@ void *ftp_client_thread(SOCKET *s)
 				break;
 
 			i = 0;
-			while (rcvbuf[i] == ' ')
-				i++;
+			while ((rcvbuf[i] != 0) && (isalpha(rcvbuf[i]) == 0))
+				++i;
 
 			cmd = &rcvbuf[i];
 			while ((rcvbuf[i] != 0) && (rcvbuf[i] != ' '))
-				i++;
+				++i;
 
 			cmdlen = &rcvbuf[i] - cmd;
 			while (rcvbuf[i] == ' ')
-				i++;
+				++i;
 
 			if (rcvbuf[i] == 0)
 				params = NULL;
