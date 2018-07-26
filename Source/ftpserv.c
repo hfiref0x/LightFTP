@@ -681,9 +681,6 @@ void *list_thread(PFTPCONTEXT context)
 		gnutls_deinit(TLS_datasession);
 	}
 
-	if (clientsocket != INVALID_SOCKET)
-		close(clientsocket);
-
 	writelogentry(context, " LIST complete", "");
 
 	if (clientsocket == INVALID_SOCKET) {
@@ -694,6 +691,8 @@ void *list_thread(PFTPCONTEXT context)
 			sendstring(context, success226);
 		else
 			sendstring(context, error426);
+
+		close(clientsocket);
 	}
 
 	context->WorkerThreadValid = -1;
@@ -875,9 +874,6 @@ void *retr_thread(PFTPCONTEXT context)
 		gnutls_deinit(TLS_datasession);
 	}
 
-	if (clientsocket != INVALID_SOCKET)
-		close(clientsocket);
-
 	/* calculating performance */
 	dtx = lt1 - lt0;
 
@@ -896,6 +892,8 @@ void *retr_thread(PFTPCONTEXT context)
 			sendstring(context, success226);
 		else
 			sendstring(context, error426);
+
+		close(clientsocket);
 	}
 
 	context->WorkerThreadValid = -1;
@@ -1304,9 +1302,6 @@ void *stor_thread(PFTPCONTEXT context)
 		gnutls_deinit(TLS_datasession);
 	}
 
-	if (clientsocket != INVALID_SOCKET)
-		close(clientsocket);
-
 	/* calculating performance */
 	if (buffer != NULL)
 	{
@@ -1325,6 +1320,8 @@ void *stor_thread(PFTPCONTEXT context)
 			sendstring(context, success226);
 		else
 			sendstring(context, error426);
+
+		close(clientsocket);
 	}
 
 	context->WorkerThreadValid = -1;
@@ -1461,9 +1458,6 @@ void *append_thread(PFTPCONTEXT context)
 		gnutls_deinit(TLS_datasession);
 	}
 
-	if (clientsocket != INVALID_SOCKET)
-		close(clientsocket);
-
 	writelogentry(context, " STOR complete", "");
 
 	if (clientsocket == INVALID_SOCKET) {
@@ -1474,6 +1468,8 @@ void *append_thread(PFTPCONTEXT context)
 			sendstring(context, success226);
 		else
 			sendstring(context, error426);
+
+		close(clientsocket);
 	}
 
 	context->WorkerThreadValid = -1;
@@ -1752,9 +1748,6 @@ void *msld_thread(PFTPCONTEXT context)
 		gnutls_deinit(TLS_datasession);
 	}
 
-	if (clientsocket != INVALID_SOCKET)
-		close(clientsocket);
-
 	writelogentry(context, " LIST complete", "");
 
 	if (clientsocket == INVALID_SOCKET) {
@@ -1765,6 +1758,8 @@ void *msld_thread(PFTPCONTEXT context)
 			sendstring(context, success226);
 		else
 			sendstring(context, error426);
+
+		close(clientsocket);
 	}
 
 	context->WorkerThreadValid = -1;
