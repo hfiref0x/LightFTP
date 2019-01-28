@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Jun 28, 2018
+*  Modified on: Jan 28, 2019
 *
 *      Author: lightftp
 */
@@ -405,7 +405,6 @@ void WorkerThreadCleanup(PFTPCONTEXT context)
 
 	context->DataIPv4 = 0;
 	context->DataPort = 0;
-	writelogentry(context, "WorkerThreadCleanup complete", "");
 }
 
 int ftpUSER(PFTPCONTEXT context, const char *params)
@@ -1922,6 +1921,7 @@ void *ftp_client_thread(SOCKET *s)
 				params = &rcvbuf[i];
 
 			cmdno = -1;
+			rv = 1;
 			for (c=0; c<MAX_CMDS; c++)
 				if (strncasecmp(cmd, ftpcmds[c], cmdlen) == 0)
 				{
