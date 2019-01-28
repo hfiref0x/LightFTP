@@ -86,4 +86,4 @@ Example of configuration file can be found in Source directory as fftp.conf.
 
 # Authors
 
-(c) 2007 - 2018 LightFTP Project
+(c) 2007 - 2019 LightFTP Project
