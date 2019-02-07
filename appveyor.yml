@@ -1,0 +1,14 @@
+version: 2.0.1.{build}
+pull_requests:
+  do_not_increment_build_number: true
+branches:
+  only:
+  - master
+image: Ubuntu1804
+install:
+- sh: sudo apt-get --assume-yes install libgnutls28-dev
+build_script:
+- sh: >-
+    cd Source/Release
+
+    make
