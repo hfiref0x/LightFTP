@@ -1,9 +1,9 @@
 /*
 * ftpserv.c
 *
-*  Created on: Aug 20, 2016
+*  Created on: August 20, 2016
 *
-*  Modified on: Feb 04, 2019
+*  Modified on: April 03, 2019
 *
 *      Author: lightftp
 */
@@ -405,6 +405,7 @@ void WorkerThreadCleanup(PFTPCONTEXT context)
 
 	context->DataIPv4 = 0;
 	context->DataPort = 0;
+	writelogentry(context, "WorkerThreadCleanup complete", "");
 }
 
 int ftpUSER(PFTPCONTEXT context, const char *params)
@@ -417,12 +418,16 @@ int ftpUSER(PFTPCONTEXT context, const char *params)
 	/*
 	 * Save username in GPBuffer for next PASS command
 	 */
-	strcpy(context->GPBuffer, params);
 
 	writelogentry(context, " USER: ", (char *)params);
-	sendstring(context, interm331);
-	sendstring(context, params);
-	return sendstring(context, interm331_tail);
+
+	strcpy(context->GPBuffer, interm331);
+	strcat(context->GPBuffer, params);
+	strcat(context->GPBuffer, interm331_tail);
+	sendstring(context, context->GPBuffer);
+
+	strcpy(context->GPBuffer, params);
+	return 1;
 }
 
 int ftpQUIT(PFTPCONTEXT context, const char *params)
@@ -1407,7 +1412,7 @@ int ftpFEAT(PFTPCONTEXT context, const char *params)
 void *append_thread(PFTPCONTEXT context)
 {
 	SOCKET				clientsocket;
-	int					f;
+	int					f = -1;
 	ssize_t				sz;
 	char				*buffer = NULL;
 	gnutls_session_t	TLS_datasession;
@@ -1415,7 +1420,6 @@ void *append_thread(PFTPCONTEXT context)
 	pthread_mutex_lock(&context->MTLock);
 	pthread_cleanup_push(cleanup_handler, context);
 	TLS_datasession = NULL;
-	f = -1;
 
 	clientsocket = create_datasocket(context);
 	while (clientsocket != INVALID_SOCKET)
@@ -1922,7 +1926,6 @@ void *ftp_client_thread(SOCKET *s)
 				params = &rcvbuf[i];
 
 			cmdno = -1;
-			rv = 1;
 			for (c=0; c<MAX_CMDS; c++)
 				if (strncasecmp(cmd, ftpcmds[c], cmdlen) == 0)
 				{
