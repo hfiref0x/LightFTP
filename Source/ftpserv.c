@@ -1,9 +1,9 @@
 /*
 * ftpserv.c
 *
-*  Created on: Aug 20, 2016
+*  Created on: August 20, 2016
 *
-*  Modified on: Jun 28, 2018
+*  Modified on: April 03, 2019
 *
 *      Author: lightftp
 */
@@ -697,7 +697,6 @@ void *list_thread(PFTPCONTEXT context)
 			sendstring(context, error426);
 
 		close(clientsocket);
-		context->DataSocket = INVALID_SOCKET;
 	}
 
 	context->WorkerThreadValid = -1;
@@ -899,7 +898,6 @@ void *retr_thread(PFTPCONTEXT context)
 			sendstring(context, error426);
 
 		close(clientsocket);
-		context->DataSocket = INVALID_SOCKET;
 	}
 
 	context->WorkerThreadValid = -1;
@@ -1328,7 +1326,6 @@ void *stor_thread(PFTPCONTEXT context)
 			sendstring(context, error426);
 
 		close(clientsocket);
-		context->DataSocket = INVALID_SOCKET;
 	}
 
 	context->WorkerThreadValid = -1;
@@ -1415,7 +1412,7 @@ int ftpFEAT(PFTPCONTEXT context, const char *params)
 void *append_thread(PFTPCONTEXT context)
 {
 	SOCKET				clientsocket;
-	int					f;
+	int					f = -1;
 	ssize_t				sz;
 	char				*buffer = NULL;
 	gnutls_session_t	TLS_datasession;
@@ -1423,7 +1420,6 @@ void *append_thread(PFTPCONTEXT context)
 	pthread_mutex_lock(&context->MTLock);
 	pthread_cleanup_push(cleanup_handler, context);
 	TLS_datasession = NULL;
-	f = -1;
 
 	clientsocket = create_datasocket(context);
 	while (clientsocket != INVALID_SOCKET)
@@ -1478,7 +1474,6 @@ void *append_thread(PFTPCONTEXT context)
 			sendstring(context, error426);
 
 		close(clientsocket);
-		context->DataSocket = INVALID_SOCKET;
 	}
 
 	context->WorkerThreadValid = -1;
@@ -1769,7 +1764,6 @@ void *msld_thread(PFTPCONTEXT context)
 			sendstring(context, error426);
 
 		close(clientsocket);
-		context->DataSocket = INVALID_SOCKET;
 	}
 
 	context->WorkerThreadValid = -1;
