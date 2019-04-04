@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Feb 04, 2019
+*  Modified on: Apr 04, 2019
 *
 *      Author: lightftp
 */
@@ -405,6 +405,7 @@ void WorkerThreadCleanup(PFTPCONTEXT context)
 
 	context->DataIPv4 = 0;
 	context->DataPort = 0;
+	//writelogentry(context, "WorkerThreadCleanup complete", "");
 }
 
 int ftpUSER(PFTPCONTEXT context, const char *params)
@@ -417,12 +418,16 @@ int ftpUSER(PFTPCONTEXT context, const char *params)
 	/*
 	 * Save username in GPBuffer for next PASS command
 	 */
-	strcpy(context->GPBuffer, params);
 
 	writelogentry(context, " USER: ", (char *)params);
-	sendstring(context, interm331);
-	sendstring(context, params);
-	return sendstring(context, interm331_tail);
+
+	strcpy(context->GPBuffer, interm331);
+	strcat(context->GPBuffer, params);
+	strcat(context->GPBuffer, interm331_tail);
+	sendstring(context, context->GPBuffer);
+
+	strcpy(context->GPBuffer, params);
+	return 1;
 }
 
 int ftpQUIT(PFTPCONTEXT context, const char *params)
@@ -692,6 +697,7 @@ void *list_thread(PFTPCONTEXT context)
 			sendstring(context, error426);
 
 		close(clientsocket);
+		context->DataSocket = INVALID_SOCKET;
 	}
 
 	context->WorkerThreadValid = -1;
@@ -893,6 +899,7 @@ void *retr_thread(PFTPCONTEXT context)
 			sendstring(context, error426);
 
 		close(clientsocket);
+		context->DataSocket = INVALID_SOCKET;
 	}
 
 	context->WorkerThreadValid = -1;
@@ -1321,6 +1328,7 @@ void *stor_thread(PFTPCONTEXT context)
 			sendstring(context, error426);
 
 		close(clientsocket);
+		context->DataSocket = INVALID_SOCKET;
 	}
 
 	context->WorkerThreadValid = -1;
@@ -1470,6 +1478,7 @@ void *append_thread(PFTPCONTEXT context)
 			sendstring(context, error426);
 
 		close(clientsocket);
+		context->DataSocket = INVALID_SOCKET;
 	}
 
 	context->WorkerThreadValid = -1;
@@ -1760,6 +1769,7 @@ void *msld_thread(PFTPCONTEXT context)
 			sendstring(context, error426);
 
 		close(clientsocket);
+		context->DataSocket = INVALID_SOCKET;
 	}
 
 	context->WorkerThreadValid = -1;
