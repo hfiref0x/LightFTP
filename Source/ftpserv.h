@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Jun 28, 2018
+*  Modified on: Sep 01, 2019
 *
 *      Author: lightftp
 */
@@ -90,7 +90,6 @@ typedef struct	_FTPCONTEXT {
 	int					File;
 	int					Mode;
 	int					Access;
-	int					CreateMode;
 	int					SessionID;
 	int					DataProtectionLevel;
 	off_t				RestPoint;
