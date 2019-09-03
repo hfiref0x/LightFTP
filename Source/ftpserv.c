@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Apr 04, 2019
+*  Modified on: Sep 01, 2019
 *
 *      Author: lightftp
 */
@@ -812,13 +812,14 @@ void *retr_thread(PFTPCONTEXT context)
 	pthread_mutex_lock(&context->MTLock);
 	pthread_cleanup_push(cleanup_handler, context);
 
+	f = -1;
 	sent_ok = 0;
 	sz_total = 0;
 	buffer = NULL;
 	TLS_datasession = NULL;
-	f = -1;
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	lt0 = t.tv_sec*1e9 + t.tv_nsec;
+    dtx = t.tv_sec+30;
 
 	buffer = malloc(TRANSMIT_BUFFER_SIZE);
 	while (buffer != NULL)
@@ -860,33 +861,36 @@ void *retr_thread(PFTPCONTEXT context)
 				sent_ok = 0;
 				break;
 			}
+
+            /* heartbeat to control channel */
+            clock_gettime(CLOCK_MONOTONIC, &t);
+            if (t.tv_sec >= dtx)
+            {
+               dtx += 120;
+               sendstring(context, "\r\n");
+               writelogentry(context, "keepalive sent", "");
+            }
 		}
+
+		/* calculating performance */
+
+		clock_gettime(CLOCK_MONOTONIC, &t);
+		lt1 = t.tv_sec*1e9 + t.tv_nsec;
+		dtx = lt1 - lt0;
+	    snprintf(buffer, buffer_size, " RETR complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
+	    	sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
+        writelogentry(context, buffer, "");
 
 		break;
 	}
-
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	lt1 = t.tv_sec*1e9 + t.tv_nsec;
 
 	if (f != -1)
 		close(f);
 
 	context->File = -1;
 
-	if (TLS_datasession != NULL)
-	{
-		gnutls_bye(TLS_datasession, GNUTLS_SHUT_RDWR);
-		gnutls_deinit(TLS_datasession);
-	}
-
-	/* calculating performance */
-	dtx = lt1 - lt0;
-
     if (buffer != NULL) {
-	    sprintf(buffer,  " RETR complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
-	    	sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
-        writelogentry(context, buffer, "");
-        free(buffer);
+    	free(buffer);
     }
 
 	if (clientsocket == INVALID_SOCKET) {
@@ -900,6 +904,11 @@ void *retr_thread(PFTPCONTEXT context)
 
 		close(clientsocket);
 		context->DataSocket = INVALID_SOCKET;
+	}
+
+	if (TLS_datasession != NULL) {
+		gnutls_bye(TLS_datasession, GNUTLS_SHUT_RDWR);
+		gnutls_deinit(TLS_datasession);
 	}
 
 	context->WorkerThreadValid = -1;
@@ -1247,9 +1256,10 @@ int ftpRMD(PFTPCONTEXT context, const char *params)
 
 void *stor_thread(PFTPCONTEXT context)
 {
-	SOCKET				clientsocket;
+	volatile SOCKET     clientsocket;
 	int					f;
 	ssize_t				sz, sz_total;
+	size_t				buffer_size;
 	char				*buffer;
 	struct timespec		t;
 	signed long long	lt0, lt1, dtx;
@@ -1264,24 +1274,32 @@ void *stor_thread(PFTPCONTEXT context)
 	TLS_datasession = NULL;
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	lt0 = t.tv_sec*1e9 + t.tv_nsec;
+    dtx = t.tv_sec+30;
 
-	clientsocket = create_datasocket(context);
-	while (clientsocket != INVALID_SOCKET)
+	buffer = malloc(TRANSMIT_BUFFER_SIZE);
+	while (buffer != NULL)
 	{
-		buffer = malloc(TRANSMIT_BUFFER_SIZE);
-		if (buffer == NULL)
-			break;
+        clientsocket = create_datasocket(context);
+        if (clientsocket == INVALID_SOCKET)
+            break;
 
 		if (context->TLS_session != NULL)
+		{
 			InitTLSSession(&TLS_datasession, clientsocket, 0);
+			buffer_size = gnutls_record_get_max_size(TLS_datasession);
+			if (buffer_size > TRANSMIT_BUFFER_SIZE)
+				buffer_size = TRANSMIT_BUFFER_SIZE;
+		}
+		else
+			buffer_size = TRANSMIT_BUFFER_SIZE;
 
-		f = open(context->GPBuffer, context->CreateMode, S_IRWXU | S_IRGRP | S_IROTH);
+		f = open(context->GPBuffer, O_CREAT | O_RDWR | O_TRUNC, S_IRWXU | S_IRGRP | S_IROTH);
 		context->File = f;
 		if (f == -1)
 			break;
 
 		while ( context->WorkerThreadAbort == 0 ) {
-			sz = recv_auto(clientsocket, TLS_datasession, buffer, TRANSMIT_BUFFER_SIZE);
+			sz = recv_auto(clientsocket, TLS_datasession, buffer, buffer_size);
 			if (sz > 0)
 			{
 				sz_total += sz;
@@ -1289,34 +1307,37 @@ void *stor_thread(PFTPCONTEXT context)
 			}
 			else
 				break;
+
+            /* heartbeat to control channel */
+            clock_gettime(CLOCK_MONOTONIC, &t);
+            if (t.tv_sec >= dtx)
+            {
+               dtx += 120;
+               sendstring(context, "\r\n");
+               writelogentry(context, "keepalive sent", "");
+            }
 		}
+
+		/* calculating performance */
+
+		clock_gettime(CLOCK_MONOTONIC, &t);
+		lt1 = t.tv_sec*1e9 + t.tv_nsec;
+		dtx = lt1 - lt0;
+		snprintf(buffer, buffer_size, " STOR complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
+				sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
+		writelogentry(context, buffer, "");
 
 		break;
 	}
-
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	lt1 = t.tv_sec*1e9 + t.tv_nsec;
 
 	if (f != -1)
 		close(f);
 
 	context->File = -1;
 
-	if (TLS_datasession != NULL)
-	{
-		gnutls_bye(TLS_datasession, GNUTLS_SHUT_RDWR);
-		gnutls_deinit(TLS_datasession);
-	}
-
-	/* calculating performance */
-	if (buffer != NULL)
-	{
-		dtx = lt1 - lt0;
-		sprintf(buffer,  " STOR complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
-				sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
-		writelogentry(context, buffer, "");
-		free(buffer);
-	}
+	if (buffer != NULL) {
+    	free(buffer);
+    }
 
 	if (clientsocket == INVALID_SOCKET) {
 		sendstring(context, error451);
@@ -1331,6 +1352,11 @@ void *stor_thread(PFTPCONTEXT context)
 		context->DataSocket = INVALID_SOCKET;
 	}
 
+	if (TLS_datasession != NULL) {
+		gnutls_bye(TLS_datasession, GNUTLS_SHUT_RDWR);
+		gnutls_deinit(TLS_datasession);
+	}
+
 	context->WorkerThreadValid = -1;
 	pthread_cleanup_pop(0);
 	pthread_mutex_unlock(&context->MTLock);
@@ -1339,8 +1365,8 @@ void *stor_thread(PFTPCONTEXT context)
 
 int ftpSTOR(PFTPCONTEXT context, const char *params)
 {
-	struct	stat	filestats;
 	pthread_t		tid;
+	struct stat		filestats;
 
 	if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
 		return sendstring(context, error530);
@@ -1362,12 +1388,9 @@ int ftpSTOR(PFTPCONTEXT context, const char *params)
 			(char *)params, context->GPBuffer) == NULL)
 		return 0;
 
-	if ( context->Access == FTP_ACCESS_FULL )
-		context->CreateMode = O_CREAT | O_WRONLY| O_TRUNC;
-	else
+	if ( stat(context->GPBuffer, &filestats) == 0 )
 	{
-		context->CreateMode = O_CREAT | O_WRONLY| O_EXCL;
-		if (stat(context->GPBuffer, &filestats) == 0)
+		if ( context->Access != FTP_ACCESS_FULL )
 			return sendstring(context, error550_r);
 	}
 
@@ -1414,22 +1437,42 @@ int ftpFEAT(PFTPCONTEXT context, const char *params)
 
 void *append_thread(PFTPCONTEXT context)
 {
-	SOCKET				clientsocket;
+	volatile SOCKET     clientsocket;
 	int					f;
-	ssize_t				sz;
-	char				*buffer = NULL;
+	ssize_t				sz, sz_total;
+	size_t				buffer_size;
+	char				*buffer;
+	struct timespec		t;
+	signed long long	lt0, lt1, dtx;
 	gnutls_session_t	TLS_datasession;
 
 	pthread_mutex_lock(&context->MTLock);
 	pthread_cleanup_push(cleanup_handler, context);
-	TLS_datasession = NULL;
-	f = -1;
 
-	clientsocket = create_datasocket(context);
-	while (clientsocket != INVALID_SOCKET)
+	f = -1;
+	sz_total = 0;
+	buffer = NULL;
+	TLS_datasession = NULL;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	lt0 = t.tv_sec*1e9 + t.tv_nsec;
+    dtx = t.tv_sec+30;
+
+	buffer = malloc(TRANSMIT_BUFFER_SIZE);
+	while (buffer != NULL)
 	{
+        clientsocket = create_datasocket(context);
+        if (clientsocket == INVALID_SOCKET)
+            break;
+
 		if (context->TLS_session != NULL)
+		{
 			InitTLSSession(&TLS_datasession, clientsocket, 0);
+			buffer_size = gnutls_record_get_max_size(TLS_datasession);
+			if (buffer_size > TRANSMIT_BUFFER_SIZE)
+				buffer_size = TRANSMIT_BUFFER_SIZE;
+		}
+		else
+			buffer_size = TRANSMIT_BUFFER_SIZE;
 
 		f = open(context->GPBuffer, O_RDWR);
 		context->File = f;
@@ -1437,36 +1480,47 @@ void *append_thread(PFTPCONTEXT context)
 			break;
 
 		lseek(f, 0, SEEK_END);
-		buffer = malloc(TRANSMIT_BUFFER_SIZE);
-		if (buffer == NULL)
-			break;
 
 		while ( context->WorkerThreadAbort == 0 ) {
-			sz = recv_auto(clientsocket, TLS_datasession, buffer, TRANSMIT_BUFFER_SIZE);
+			sz = recv_auto(clientsocket, TLS_datasession, buffer, buffer_size);
 			if (sz > 0)
+			{
+				sz_total += sz;
 				write(f, buffer, sz);
+			}
 			else
 				break;
+
+            /* heartbeat to control channel */
+            clock_gettime(CLOCK_MONOTONIC, &t);
+            if (t.tv_sec >= dtx)
+            {
+               dtx += 120;
+               sendstring(context, "\r\n");
+               writelogentry(context, "keepalive sent", "");
+            }
 		}
+
+		/* calculating performance */
+
+		clock_gettime(CLOCK_MONOTONIC, &t);
+		lt1 = t.tv_sec*1e9 + t.tv_nsec;
+		dtx = lt1 - lt0;
+		snprintf(buffer, buffer_size, " APPE complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
+				sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
+		writelogentry(context, buffer, "");
 
 		break;
 	}
-
-	if (buffer != NULL)
-		free(buffer);
 
 	if (f != -1)
 		close(f);
 
 	context->File = -1;
 
-	if (TLS_datasession != NULL)
-	{
-		gnutls_bye(TLS_datasession, GNUTLS_SHUT_RDWR);
-		gnutls_deinit(TLS_datasession);
-	}
-
-	writelogentry(context, " STOR complete", "");
+    if (buffer != NULL) {
+        free(buffer);
+    }
 
 	if (clientsocket == INVALID_SOCKET) {
 		sendstring(context, error451);
@@ -1479,6 +1533,11 @@ void *append_thread(PFTPCONTEXT context)
 
 		close(clientsocket);
 		context->DataSocket = INVALID_SOCKET;
+	}
+
+	if (TLS_datasession != NULL) {
+		gnutls_bye(TLS_datasession, GNUTLS_SHUT_RDWR);
+		gnutls_deinit(TLS_datasession);
 	}
 
 	context->WorkerThreadValid = -1;
