@@ -2,6 +2,9 @@
 - Removed
 * Fixed/Changed
 
+May 15, 2020, v2.0b
+* bugfixes
+
 Jun 28, 2018, v2.0a
 
 + simplify path processing functions

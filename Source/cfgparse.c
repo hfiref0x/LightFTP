@@ -9,15 +9,12 @@
 */
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include "x_malloc.h"
 
-char * skip_comments_and_blanks(char *p)
+char *skip_comments_and_blanks(char *p)
 {
 	while (*p != 0) {
 
@@ -47,9 +44,9 @@ char * skip_comments_and_blanks(char *p)
 	return p;
 }
 
-/* TODO: Refactor this function */
+/* TODO: Rewrite this function */
 
-int ParseConfig(
+int config_parse(
     const char      *pcfg,
     const char      *section_name,
     const char      *key_name,
@@ -202,7 +199,7 @@ int ParseConfig(
 	return 0;
 }
 
-char *InitConfig(char *cfg_filename)
+char *config_init(char *cfg_filename)
 {
 	int		f_config;
 	char	*buffer = NULL;

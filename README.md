@@ -101,7 +101,7 @@ Example of configuration file can be found in Source directory as fftp.conf.
 * In order to build from source in Linux you need GCC C compiler, run make command in the Release directory. LigthFTP uses GnuTLS, make sure you have headers (libgnutls-dev or gnutls-dev) installed;
 * Old Windows Visual Studio source code and project files located in Source/Deprecated directory, in order to build from this source you need Microsoft Visual Studio 2013/2015 and later versions.
 
-### Example for Linux Mint 19.1/Ubuntu 18.04
+### Example for Linux Mint 19.3/Ubuntu 18.04
 
 You need GCC and Make installed. If they are not installed you can install them as part of build-essential package:
 
@@ -131,4 +131,4 @@ Result binary is fftp. Next setup ftp config, example config file is Source/fftp
 
 # Authors
 
-(c) 2007 - 2019 LightFTP Project
+(c) 2007 - 2020 LightFTP Project

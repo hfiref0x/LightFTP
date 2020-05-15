@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Sep 01, 2019
+*  Modified on: May 15, 2020
 *
 *      Author: lightftp
 */
@@ -29,13 +29,20 @@
 #include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <gnutls/gnutls.h>
+
+#ifdef __CYGWIN__
+#define TCP_KEEPCNT 8
+#define TCP_KEEPINTVL 150
+#define TCP_KEEPIDLE 14400
+#endif
 
 typedef struct _FTP_CONFIG {
 	char			*ConfigFile;
 	unsigned int	MaxUsers;
+	unsigned int	EnableKeepalive;
 	in_port_t		Port;
 	in_port_t		PasvPortBase;
 	in_port_t		PasvPortMax;
@@ -44,15 +51,15 @@ typedef struct _FTP_CONFIG {
 	in_addr_t		LocalIPMask;
 } FTP_CONFIG, *PFTP_CONFIG;
 
-#define	CONFIG_FILE_NAME		"fftp.conf"
-#define	CONFIG_SECTION_NAME		"ftpconfig"
-#define	DEFAULT_FTP_PORT		21
+#define	CONFIG_FILE_NAME     "fftp.conf"
+#define	CONFIG_SECTION_NAME  "ftpconfig"
+#define	DEFAULT_FTP_PORT     21
 
-#define INVALID_SOCKET -1
-#define SOCKET	int
+#define INVALID_SOCKET       -1
+#define SOCKET               int
 
-#define MODE_NORMAL			0
-#define MODE_PASSIVE		1
+#define MODE_NORMAL          0
+#define MODE_PASSIVE         1
 
 /*
  * NOT_LOGGED_IN = "banned" in config. Not logged in or banned.
@@ -68,9 +75,8 @@ typedef struct _FTP_CONFIG {
 
 #define TRANSMIT_BUFFER_SIZE	65536
 
-static const unsigned long int	FTP_PATH_MAX = PATH_MAX;
-
-#define	SIZE_OF_GPBUFFER		4*FTP_PATH_MAX
+#define	SIZE_OF_RCVBUFFER       2*PATH_MAX
+#define	SIZE_OF_GPBUFFER        4*PATH_MAX
 
 typedef struct	_FTPCONTEXT {
 	pthread_mutex_t		MTLock;
@@ -110,6 +116,8 @@ extern void *ftpmain(void *p);
 extern gnutls_certificate_credentials_t		x509_cred;
 extern gnutls_priority_t					priority_cache;
 
+extern const char shortmonths[12][4];
+
 #define	MAX_CMDS 32
 
 int ftpUSER	(PFTPCONTEXT context, const char *params);
@@ -145,57 +153,46 @@ int ftpEPSV (PFTPCONTEXT context, const char *params);
 int ftpHELP (PFTPCONTEXT context, const char *params);
 int ftpSITE (PFTPCONTEXT context, const char *params);
 
-static const char success200[]		= "200 Command okay.\r\n";
-static const char success200_1[]	= "200 Type set to A.\r\n";
-static const char success200_2[]	= "200 Type set to I.\r\n";
-static const char success211[]		=
-		"211-Extensions supported:\r\n PASV\r\n UTF8\r\n TVFS\r\n REST STREAM\r\n "
-		"SIZE\r\n MLSD\r\n AUTH TLS\r\n PBSZ\r\n PROT\r\n EPSV\r\n"
-		"211 End.\r\n";
+#define success200 "200 Command okay.\r\n"
+#define success200_1 "200 Type set to A.\r\n"
+#define success200_2 "200 Type set to I.\r\n"
 
-static const char success214[]		=
-		"214-The following commands are recognized.\r\n"
-		" ABOR APPE AUTH CDUP CWD  DELE EPSV FEAT HELP LIST MKD MLSD NOOP OPTS\r\n"
-		" PASS PASV PBSZ PORT PROT PWD  QUIT REST RETR RMD RNFR RNTO SITE SIZE\r\n"
-		" STOR SYST TYPE USER\r\n"
-		"214 Help OK.\r\n";
+extern const char success211[];
+extern const char success214[];
 
-static const char success215[]		= "215 UNIX Type: L8\r\n";
-static const char success220[]		= "220 LightFTP server v2.0a ready\r\n";
-static const char success221[]		= "221 Goodbye!\r\n";
-static const char success226[]		= "226 Transfer complete. Closing data connection.\r\n";
-static const char success227[]		= "227 Entering Passive Mode (%u,%u,%u,%u,%u,%u).\r\n";
-static const char success229[]		= "229 Entering Extended Passive Mode (|||%u|)\r\n";
-static const char success230[]		= "230 User logged in, proceed.\r\n";
-static const char success234[]		= "234 AUTH command OK. Initializing TLS connection.\r\n";
-static const char success250[]		= "250 Requested file action okay, completed.\r\n";
-static const char success257[]		= "257 Directory created.\r\n";
-static const char error425[]		= "425 Can not open data connection.\r\n";
-static const char error426[]		= "426 Connection closed; transfer aborted.\r\n";
-static const char error451[]		= "451 Requested action aborted. Local error in processing.\r\n";
-static const char error500[]		= "500 Syntax error, command unrecognized.\r\n";
-static const char error500_auth[]	= "500 AUTH unsuccessful.\r\n";
-static const char error501[]		= "501 Syntax error in parameters or arguments.\r\n";
-static const char error503[]		= "503 Invalid sequence of commands (AUTH TLS required prior to authentication).\r\n";
-static const char error504[]		= "504 Command not implemented for that parameter.\r\n";
-static const char error530[]		= "530 Please login with USER and PASS.\r\n";
-static const char error530_b[]		= "530 This account is disabled.\r\n";
-static const char error530_r[]		= "530 Invalid user name or password.\r\n";
-static const char error550[]		= "550 File or directory unavailable.\r\n";
-static const char error550_r[]		= "550 Permission denied.\r\n";
-static const char error550_a[]		= "550 Data channel was closed by ABOR command from client.\r\n";
-static const char error550_t[]		= "550 Another action is in progress, use ABOR command first.\r\n";
-static const char error550_m[]		= "550 Insufficient resources.\r\n";
-static const char interm125[]		= "125 Data connection already open; Transfer starting.\r\n";
-static const char interm150[]		= "150 File status okay; about to open data connection.\r\n";
-static const char interm350[]		= "350 REST supported. Ready to resume at byte offset ";
-static const char interm350_ren[]	= "350 File exists. Ready to rename.\r\n";
-static const char interm331[]		= "331 User ";
-static const char interm331_tail[]  = " OK. Password required\r\n";
-static const char NOSLOTS[]			= "MAXIMUM ALLOWED USERS CONNECTED\r\n";
+#define success215     "215 UNIX Type: L8\r\n"
+#define success220     "220 LightFTP server v2.0b ready\r\n"
+#define success221     "221 Goodbye!\r\n"
+#define success226     "226 Transfer complete. Closing data connection.\r\n"
+#define success227     "227 Entering Passive Mode (%u,%u,%u,%u,%u,%u).\r\n"
+#define success229     "229 Entering Extended Passive Mode (|||%u|)\r\n"
+#define success230     "230 User logged in, proceed.\r\n"
+#define success234     "234 AUTH command OK. Initializing TLS connection.\r\n"
+#define success250     "250 Requested file action okay, completed.\r\n"
+#define success257     "257 Directory created.\r\n"
+#define error425       "425 Can not open data connection.\r\n"
+#define error426       "426 Connection closed; transfer aborted.\r\n"
+#define error451       "451 Requested action aborted. Local error in processing.\r\n"
+#define error500       "500 Syntax error, command unrecognized.\r\n"
+#define error500_auth  "500 AUTH unsuccessful.\r\n"
+#define error501       "501 Syntax error in parameters or arguments.\r\n"
+#define error503       "503 Invalid sequence of commands (AUTH TLS required prior to authentication).\r\n"
+#define error504       "504 Command not implemented for that parameter.\r\n"
+#define error530       "530 Please login with USER and PASS.\r\n"
+#define error530_b     "530 This account is disabled.\r\n"
+#define error530_r     "530 Invalid user name or password.\r\n"
+#define error550       "550 File or directory unavailable.\r\n"
+#define error550_r     "550 Permission denied.\r\n"
+#define error550_a     "550 Data channel was closed by ABOR command from client.\r\n"
+#define error550_t     "550 Another action is in progress, use ABOR command first.\r\n"
+#define error550_m     "550 Insufficient resources.\r\n"
+#define interm125      "125 Data connection already open; Transfer starting.\r\n"
+#define interm150      "150 File status okay; about to open data connection.\r\n"
+#define interm350      "350 REST supported. Ready to resume at byte offset "
+#define interm350_ren  "350 File exists. Ready to rename.\r\n"
+#define interm331      "331 User "
+#define interm331_tail " OK. Password required\r\n"
 
-static const char shortmonths[12][4] = {
-		"Jan\0", "Feb\0", "Mar\0", "Apr\0", "May\0", "Jun\0",
-		"Jul\0", "Aug\0", "Sep\0", "Oct\0", "Nov\0", "Dec\0"};
+#define NOSLOTS "MAXIMUM ALLOWED USERS CONNECTED\r\n"
 
 #endif /* FTPSERV_H_ */

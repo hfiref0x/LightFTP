@@ -5,18 +5,21 @@
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
 ../cfgparse.c \
+../ftpconst.c \
 ../ftpserv.c \
 ../main.c \
 ../x_malloc.c 
 
 OBJS += \
 ./cfgparse.o \
+./ftpconst.o \
 ./ftpserv.o \
 ./main.o \
 ./x_malloc.o 
 
 C_DEPS += \
 ./cfgparse.d \
+./ftpconst.d \
 ./ftpserv.d \
 ./main.d \
 ./x_malloc.d 

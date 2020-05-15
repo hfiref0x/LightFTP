@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Sep 01, 2019
+*  Modified on: May 15, 2020
 *
 *      Author: lightftp
 */
@@ -217,7 +217,7 @@ ssize_t sendstring_plaintext(SOCKET s, const char *Buffer)
 	return (send(s, Buffer, strlen(Buffer), MSG_NOSIGNAL) >= 0);
 }
 
-int InitTLSSession(gnutls_session_t *session, SOCKET s, int send_success_string)
+int ftp_init_tls_session(gnutls_session_t *session, SOCKET s, int send_success_string)
 {
 	int ret;
 
@@ -370,7 +370,7 @@ int writelogentry(PFTPCONTEXT context, const char *logtext1, const char *logtext
 	return writeconsolestr(text);
 }
 
-void WorkerThreadCleanup(PFTPCONTEXT context)
+void ftp_worker_thread_cleanup(PFTPCONTEXT context)
 {
 	int					err;
 	void				*retv = NULL;
@@ -405,7 +405,6 @@ void WorkerThreadCleanup(PFTPCONTEXT context)
 
 	context->DataIPv4 = 0;
 	context->DataPort = 0;
-	//writelogentry(context, "WorkerThreadCleanup complete", "");
 }
 
 int ftpUSER(PFTPCONTEXT context, const char *params)
@@ -663,7 +662,7 @@ void *list_thread(PFTPCONTEXT context)
 	while (clientsocket != INVALID_SOCKET)
 	{
 		if (context->TLS_session != NULL)
-			InitTLSSession(&TLS_datasession, clientsocket, 0);
+			ftp_init_tls_session(&TLS_datasession, clientsocket, 0);
 
 		pdir = opendir(context->GPBuffer);
 		if (pdir == NULL)
@@ -830,7 +829,7 @@ void *retr_thread(PFTPCONTEXT context)
 
 		if (context->TLS_session != NULL)
 		{
-			InitTLSSession(&TLS_datasession, clientsocket, 0);
+			ftp_init_tls_session(&TLS_datasession, clientsocket, 0);
 			buffer_size = gnutls_record_get_max_size(TLS_datasession);
 			if (buffer_size > TRANSMIT_BUFFER_SIZE)
 				buffer_size = TRANSMIT_BUFFER_SIZE;
@@ -863,6 +862,7 @@ void *retr_thread(PFTPCONTEXT context)
 			}
 
             /* heartbeat to control channel */
+			/*
             clock_gettime(CLOCK_MONOTONIC, &t);
             if (t.tv_sec >= dtx)
             {
@@ -870,6 +870,7 @@ void *retr_thread(PFTPCONTEXT context)
                sendstring(context, "\r\n");
                writelogentry(context, "keepalive sent", "");
             }
+            */
 		}
 
 		/* calculating performance */
@@ -971,7 +972,7 @@ int ftpABOR(PFTPCONTEXT context, const char *params)
 		return sendstring(context, error530);
 
 	writelogentry(context, " ABORT command", NULL);
-	WorkerThreadCleanup(context);
+	ftp_worker_thread_cleanup(context);
 	return sendstring(context, success226);
 }
 
@@ -1122,7 +1123,7 @@ int ftpPASS(PFTPCONTEXT context, const char *params)
 	/*
 	 * we have username saved in context->GPBuffer from USER command
 	 */
-	if (!ParseConfig(g_cfg.ConfigFile, context->GPBuffer, "pswd", temptext, sizeof(temptext)))
+	if (!config_parse(g_cfg.ConfigFile, context->GPBuffer, "pswd", temptext, sizeof(temptext)))
 		return sendstring(context, error530_r);
 
 	if ( (strcmp(temptext, params) == 0) || (temptext[0] == '*') )
@@ -1130,8 +1131,8 @@ int ftpPASS(PFTPCONTEXT context, const char *params)
 		memset(context->RootDir, 0, sizeof(context->RootDir));
 		memset(temptext, 0, sizeof(temptext));
 
-		ParseConfig(g_cfg.ConfigFile, context->GPBuffer, "root", context->RootDir, sizeof(context->RootDir));
-		ParseConfig(g_cfg.ConfigFile, context->GPBuffer, "accs", temptext, sizeof(temptext));
+		config_parse(g_cfg.ConfigFile, context->GPBuffer, "root", context->RootDir, sizeof(context->RootDir));
+		config_parse(g_cfg.ConfigFile, context->GPBuffer, "accs", temptext, sizeof(temptext));
 
 		context->Access = FTP_ACCESS_NOT_LOGGED_IN;
 		do {
@@ -1285,7 +1286,7 @@ void *stor_thread(PFTPCONTEXT context)
 
 		if (context->TLS_session != NULL)
 		{
-			InitTLSSession(&TLS_datasession, clientsocket, 0);
+			ftp_init_tls_session(&TLS_datasession, clientsocket, 0);
 			buffer_size = gnutls_record_get_max_size(TLS_datasession);
 			if (buffer_size > TRANSMIT_BUFFER_SIZE)
 				buffer_size = TRANSMIT_BUFFER_SIZE;
@@ -1309,6 +1310,7 @@ void *stor_thread(PFTPCONTEXT context)
 				break;
 
             /* heartbeat to control channel */
+			/*
             clock_gettime(CLOCK_MONOTONIC, &t);
             if (t.tv_sec >= dtx)
             {
@@ -1316,6 +1318,7 @@ void *stor_thread(PFTPCONTEXT context)
                sendstring(context, "\r\n");
                writelogentry(context, "keepalive sent", "");
             }
+            */
 		}
 
 		/* calculating performance */
@@ -1324,7 +1327,7 @@ void *stor_thread(PFTPCONTEXT context)
 		lt1 = t.tv_sec*1e9 + t.tv_nsec;
 		dtx = lt1 - lt0;
 		snprintf(buffer, buffer_size, " STOR complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
-				sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
+            sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
 		writelogentry(context, buffer, "");
 
 		break;
@@ -1466,7 +1469,7 @@ void *append_thread(PFTPCONTEXT context)
 
 		if (context->TLS_session != NULL)
 		{
-			InitTLSSession(&TLS_datasession, clientsocket, 0);
+			ftp_init_tls_session(&TLS_datasession, clientsocket, 0);
 			buffer_size = gnutls_record_get_max_size(TLS_datasession);
 			if (buffer_size > TRANSMIT_BUFFER_SIZE)
 				buffer_size = TRANSMIT_BUFFER_SIZE;
@@ -1492,6 +1495,7 @@ void *append_thread(PFTPCONTEXT context)
 				break;
 
             /* heartbeat to control channel */
+            /*
             clock_gettime(CLOCK_MONOTONIC, &t);
             if (t.tv_sec >= dtx)
             {
@@ -1499,6 +1503,7 @@ void *append_thread(PFTPCONTEXT context)
                sendstring(context, "\r\n");
                writelogentry(context, "keepalive sent", "");
             }
+            */
 		}
 
 		/* calculating performance */
@@ -1507,7 +1512,7 @@ void *append_thread(PFTPCONTEXT context)
 		lt1 = t.tv_sec*1e9 + t.tv_nsec;
 		dtx = lt1 - lt0;
 		snprintf(buffer, buffer_size, " APPE complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
-				sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
+            sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
 		writelogentry(context, buffer, "");
 
 		break;
@@ -1681,7 +1686,7 @@ int ftpAUTH(PFTPCONTEXT context, const char *params)
 
 	if ( strcasecmp(params, "TLS") == 0 )
 		/* InitTLSSession will send reply */
-		return InitTLSSession(&context->TLS_session, context->ControlSocket, 1);
+		return ftp_init_tls_session(&context->TLS_session, context->ControlSocket, 1);
 	else
 		return sendstring(context, error504);
 }
@@ -1794,7 +1799,7 @@ void *msld_thread(PFTPCONTEXT context)
 	while (clientsocket != INVALID_SOCKET)
 	{
 		if (context->TLS_session != NULL)
-			InitTLSSession(&TLS_datasession, clientsocket, 0);
+			ftp_init_tls_session(&TLS_datasession, clientsocket, 0);
 
 		pdir = opendir(context->GPBuffer);
 		if (pdir == NULL)
@@ -1915,7 +1920,7 @@ int recvcmd(PFTPCONTEXT context, char *buffer, size_t buffer_size)
 void *ftp_client_thread(SOCKET *s)
 {
 	FTPCONTEXT				ctx __attribute__ ((aligned (16)));
-	char					*cmd, *params, rcvbuf[FTP_PATH_MAX*2];
+	char					*cmd, *params, rcvbuf[SIZE_OF_RCVBUFFER];
 	int						c, cmdno, rv;
 	size_t					i, cmdlen;
 	socklen_t				asz;
@@ -2012,7 +2017,7 @@ void *ftp_client_thread(SOCKET *s)
 				break;
 		};
 
-		WorkerThreadCleanup(&ctx);
+		ftp_worker_thread_cleanup(&ctx);
 
 		pthread_mutex_destroy(&ctx.MTLock);
 		pthread_mutexattr_destroy(&m_attr);
@@ -2027,6 +2032,20 @@ void *ftp_client_thread(SOCKET *s)
 	close(ctx.ControlSocket);
 	*s = INVALID_SOCKET;
 	return NULL;
+}
+
+void socket_set_keepalive(int s) {
+	int  opt = 1;
+    setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(opt));
+
+    opt = 16; /* set idle status after 16 seconds since last data transfer */;
+    setsockopt(s, IPPROTO_TCP, TCP_KEEPIDLE, &opt, sizeof(opt));
+
+    opt = 8; /* send keep alive packet every eight seconds */
+    setsockopt(s, IPPROTO_TCP, TCP_KEEPINTVL, &opt, sizeof(opt));
+
+    opt = 8; /* drop after eight unanswered packets */
+    setsockopt(s, IPPROTO_TCP, TCP_KEEPCNT, &opt, sizeof(opt));
 }
 
 void *ftpmain(void *p)
@@ -2080,6 +2099,9 @@ void *ftpmain(void *p)
 			rv = -1;
 			for (i=0; i<g_cfg.MaxUsers; i++) {
 				if ( scb[i] == INVALID_SOCKET ) {
+
+					if (g_cfg.EnableKeepalive != 0)
+						socket_set_keepalive(clientsocket);
 
 					scb[i] = clientsocket;
 					rv = pthread_create(&th, NULL, (__ptr_thread_start_routine)&ftp_client_thread, &scb[i]);
