@@ -105,7 +105,7 @@ int main(int argc, char *argv[])
         if (g_log != -1)
             lseek(g_log, 0L, SEEK_END);
 
-		printf("\r\n    [ LightFTP server v2.0 ]\r\n\r\n");
+		printf("\r\n    [ LightFTP server v2.1 ]\r\n\r\n");
 		printf("Log file        : %s\r\n", textbuf);
 
 		getcwd(textbuf, bufsize);

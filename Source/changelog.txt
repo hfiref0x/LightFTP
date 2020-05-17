@@ -2,8 +2,8 @@
 - Removed
 * Fixed/Changed
 
-May 15, 2020, v2.0b
-* bugfixes
+May 17, 2020, v2.1
+* bugfixes and refactoring
 
 Jun 28, 2018, v2.0a
 
