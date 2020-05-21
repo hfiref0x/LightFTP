@@ -72,7 +72,7 @@ Password to decrypt private key.
       keepalive
 
 Send keepalive packets (some NATs may require this).
-Default: 1 (enabled)
+Default: 0 (disabled)
 
 
 # User sections
