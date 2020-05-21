@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Sep 01, 2019
+*  Modified on: May 15, 2020
 *
 *      Author: lightftp
 */
@@ -11,199 +11,26 @@
 #include "ftpserv.h"
 #include "cfgparse.h"
 #include "x_malloc.h"
+#include "fspathtools.h"
 
-static const FTPROUTINE ftpprocs[MAX_CMDS] = {
-	ftpUSER, ftpQUIT, ftpNOOP, ftpPWD, ftpTYPE, ftpPORT, ftpLIST, ftpCDUP,
-	ftpCWD, ftpRETR, ftpABOR, ftpDELE, ftpPASV, ftpPASS, ftpREST, ftpSIZE,
-	ftpMKD, ftpRMD, ftpSTOR, ftpSYST, ftpFEAT, ftpAPPE, ftpRNFR, ftpRNTO,
-	ftpOPTS, ftpMLSD, ftpAUTH, ftpPBSZ, ftpPROT, ftpEPSV, ftpHELP, ftpSITE
-};
-
-static const char *ftpcmds[MAX_CMDS] = {
-	"USER", "QUIT", "NOOP", "PWD",  "TYPE", "PORT", "LIST", "CDUP",
-	"CWD",  "RETR", "ABOR", "DELE", "PASV", "PASS", "REST", "SIZE",
-	"MKD",  "RMD",  "STOR", "SYST", "FEAT", "APPE", "RNFR", "RNTO",
-	"OPTS", "MLSD", "AUTH", "PBSZ", "PROT", "EPSV", "HELP", "SITE"
+static const FTPROUTINE_ENTRY ftpprocs[MAX_CMDS] = {
+    {"USER", ftpUSER}, {"QUIT", ftpQUIT}, {"NOOP", ftpNOOP}, {"PWD",  ftpPWD },
+    {"TYPE", ftpTYPE}, {"PORT", ftpPORT}, {"LIST", ftpLIST}, {"CDUP", ftpCDUP},
+    {"CWD",  ftpCWD }, {"RETR", ftpRETR}, {"ABOR", ftpABOR}, {"DELE", ftpDELE},
+    {"PASV", ftpPASV}, {"PASS", ftpPASS}, {"REST", ftpREST}, {"SIZE", ftpSIZE},
+    {"MKD",  ftpMKD }, {"RMD",  ftpRMD }, {"STOR", ftpSTOR}, {"SYST", ftpSYST},
+    {"FEAT", ftpFEAT}, {"APPE", ftpAPPE}, {"RNFR", ftpRNFR}, {"RNTO", ftpRNTO},
+    {"OPTS", ftpOPTS}, {"MLSD", ftpMLSD}, {"AUTH", ftpAUTH}, {"PBSZ", ftpPBSZ},
+    {"PROT", ftpPROT}, {"EPSV", ftpEPSV}, {"HELP", ftpHELP}, {"SITE", ftpSITE}
 };
 
 /*
  * FTP_PASSCMD_INDEX
- * must be in sync with ftpprocs & ftpcmds "PASS" index
+ * must be in sync with ftpprocs "PASS" index
  */
-#define FTP_PASSCMD_INDEX	13
+#define FTP_PASSCMD_INDEX   13
 
 unsigned int g_newid = 0;
-
-void delete_last_slash(char *s)
-{
-	if (*s != 0)
-	{
-		/*
-		 * don't remove root directory sign as special case
-		 */
-		if ((s[0] == '/') && (s[1] == 0))
-			return;
-
-		while (s[1] != 0)
-			++s;
-
-		if (*s == '/')
-			*s = 0;
-	}
-}
-
-void add_last_slash(char *s)
-{
-	if (*s != 0)
-	{
-		while (s[1] != 0)
-			++s;
-
-		if (*s != '/')
-		{
-			s[1] = '/';
-			s[2] = 0;
-		}
-	}
-}
-
-/*
- * Cuts off filename from string leaving only path.
- * Return value: pointer to a terminating null character at the end of path
- */
-char *filepath(char *s)
-{
-	char	*p = s;
-
-	if (*s == 0)
-		return s;
-/*
- * leave root directory sign untouched
- */
-	if (*s == '/')
-	{
-		++s;
-		++p;
-	}
-
-	while (*s != 0) {
-		if (*s == '/')
-			p = s;
-		++s;
-	}
-
-	*p = 0;
-
-	return p;
-}
-
-/*
- * This function filters the path out of ".." members
- * not allowing user to escape the home directory
- */
-void format_path(char *input_path, char *filtered_path)
-{
-	char	*p0, *pnext, *fp0;
-	size_t	sl;
-
-	if (*input_path == '/')
-	{
-		++input_path;
-		*filtered_path = '/';
-		++filtered_path;
-	}
-
-	p0 = input_path;
-	pnext = input_path;
-	fp0 = filtered_path;
-	*fp0 = 0;
-
-	while (1)
-	{
-		while ((*pnext != '/') && (*pnext != 0))
-			++pnext;
-
-		sl = pnext - p0;
-
-		while (sl > 0)
-		{
-			if (sl == 1)
-				if (*p0 == '.')
-					break;
-
-			if (sl == 2)
-				if ((p0[0] == '.') && (p0[1] == '.'))
-				{
-					delete_last_slash(filtered_path);
-					fp0 = filepath(filtered_path);
-					if (fp0 != filtered_path)
-					{
-						*fp0 = '/';
-						++fp0;
-						*fp0 = 0;
-					}
-					break;
-				}
-
-			strncpy(fp0, p0, sl);
-			fp0 += sl;
-			if (*pnext != 0)
-			{
-				*fp0 = '/';
-				++fp0;
-			}
-			*fp0 = 0;
-
-			break;
-		}
-
-		if (*pnext == 0)
-			break;
-
-		++pnext;
-		p0 = pnext;
-	}
-}
-
-char *finalpath(char *root_dir, char *current_dir, char *params, char *result_path)
-{
-	char	*tmp, *user_root;
-	size_t	total_len;
-
-	total_len = strlen(root_dir)+strlen(current_dir);
-	if (params != NULL)
-		total_len += strlen(params);
-
-	if (total_len >= SIZE_OF_GPBUFFER)
-		return NULL;
-
-	tmp = x_malloc(SIZE_OF_GPBUFFER);
-
-	strcpy(result_path, root_dir);
-	add_last_slash(result_path);
-	user_root = result_path+strlen(result_path);
-
-	do {
-		if ( params == NULL )
-		{
-			strcpy(tmp, current_dir);
-			add_last_slash(tmp);
-			break;
-		}
-
-		if ( params[0] != '/' )
-		{
-			strcpy(tmp, current_dir);
-			add_last_slash(tmp);
-		}
-
-		strcat(tmp, params);
-	} while (0);
-
-	format_path(tmp, user_root);
-	free(tmp);
-	return result_path;
-}
 
 static void cleanup_handler(void *arg)
 {
@@ -217,7 +44,7 @@ ssize_t sendstring_plaintext(SOCKET s, const char *Buffer)
 	return (send(s, Buffer, strlen(Buffer), MSG_NOSIGNAL) >= 0);
 }
 
-int InitTLSSession(gnutls_session_t *session, SOCKET s, int send_success_string)
+int ftp_init_tls_session(gnutls_session_t *session, SOCKET s, int send_success_string)
 {
 	int ret;
 
@@ -347,7 +174,7 @@ ssize_t writeconsolestr(const char *Buffer)
 
 int writelogentry(PFTPCONTEXT context, const char *logtext1, const char *logtext2)
 {
-	char		text[SIZE_OF_GPBUFFER];
+	char		text[2*PATH_MAX];
 	time_t		itm = time(NULL);
 	struct tm	ltm;
 
@@ -370,7 +197,7 @@ int writelogentry(PFTPCONTEXT context, const char *logtext1, const char *logtext
 	return writeconsolestr(text);
 }
 
-void WorkerThreadCleanup(PFTPCONTEXT context)
+void ftp_worker_thread_cleanup(PFTPCONTEXT context)
 {
 	int					err;
 	void				*retv = NULL;
@@ -405,7 +232,6 @@ void WorkerThreadCleanup(PFTPCONTEXT context)
 
 	context->DataIPv4 = 0;
 	context->DataPort = 0;
-	//writelogentry(context, "WorkerThreadCleanup complete", "");
 }
 
 int ftpUSER(PFTPCONTEXT context, const char *params)
@@ -415,18 +241,12 @@ int ftpUSER(PFTPCONTEXT context, const char *params)
 
 	context->Access = FTP_ACCESS_NOT_LOGGED_IN;
 
-	/*
-	 * Save username in GPBuffer for next PASS command
-	 */
-
 	writelogentry(context, " USER: ", (char *)params);
+	snprintf(context->FileName, sizeof(context->FileName), "331 User %s OK. Password required\r\n", params);
+	sendstring(context, context->FileName);
 
-	strcpy(context->GPBuffer, interm331);
-	strcat(context->GPBuffer, params);
-	strcat(context->GPBuffer, interm331_tail);
-	sendstring(context, context->GPBuffer);
-
-	strcpy(context->GPBuffer, params);
+	/* Save login name to FileName for the next PASS command */
+	strcpy(context->FileName, params);
 	return 1;
 }
 
@@ -434,9 +254,8 @@ int ftpQUIT(PFTPCONTEXT context, const char *params)
 {
 	writelogentry(context, " QUIT", "");
 	sendstring(context, success221);
-	/*
-	 * retrun 0 to break command processing loop
-	 */
+
+	/* return 0 to break command processing loop */
 	return 0;
 }
 
@@ -450,10 +269,9 @@ int ftpPWD(PFTPCONTEXT context, const char *params)
 	if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
 		return sendstring(context, error530);
 
-	strcpy(context->GPBuffer, "257 \"");
-	strcat(context->GPBuffer, context->CurrentDir);
-	strcat(context->GPBuffer, "\" is a current directory.\r\n");
-	return sendstring(context, context->GPBuffer);
+    /* ftp_effective_path("/", context->CurrentDir, NULL, sizeof(context->FileName), context->FileName); */
+	snprintf(context->FileName, sizeof(context->FileName), "257 \"%s\" is a current directory.\r\n", context->CurrentDir);
+	return sendstring(context, context->FileName);
 }
 
 int ftpTYPE(PFTPCONTEXT context, const char *params)
@@ -598,9 +416,7 @@ strmode (mode_t mode, char *str)
 
 int list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *entry)
 {
-	char			text[SIZE_OF_GPBUFFER],
-					sacl[12];
-
+	char			text[2*PATH_MAX], sacl[12];
 	struct stat		filestats;
 	struct tm		ftm_fields;
 	time_t			deltatime;
@@ -610,9 +426,7 @@ int list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *
 	if (strcmp(entry->d_name, "..") == 0)
 		return 1;
 
-	strcpy(text, dirname);
-	add_last_slash(text);
-	strcat(text, entry->d_name);
+	snprintf(text, sizeof(text), "%s/%s", dirname, entry->d_name);
 
 	if ( lstat(text, &filestats) == 0 )
 	{
@@ -663,14 +477,14 @@ void *list_thread(PFTPCONTEXT context)
 	while (clientsocket != INVALID_SOCKET)
 	{
 		if (context->TLS_session != NULL)
-			InitTLSSession(&TLS_datasession, clientsocket, 0);
+			ftp_init_tls_session(&TLS_datasession, clientsocket, 0);
 
-		pdir = opendir(context->GPBuffer);
+		pdir = opendir(context->FileName);
 		if (pdir == NULL)
 			break;
 
 		while ((entry = readdir(pdir)) != NULL) {
-			ret = list_sub(context->GPBuffer, clientsocket, TLS_datasession, entry);
+			ret = list_sub(context->FileName, clientsocket, TLS_datasession, entry);
 			if ( (ret == 0) || (context->WorkerThreadAbort != 0 ))
 				break;
 		}
@@ -722,13 +536,9 @@ int ftpLIST(PFTPCONTEXT context, const char *params)
 			params = NULL;
 	}
 
-	if (finalpath(
-			context->RootDir,
-			context->CurrentDir,
-			(char *)params, context->GPBuffer) == NULL)
-		return 0;
+	ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
-	while (stat(context->GPBuffer, &filestats) == 0)
+	while (stat(context->FileName, &filestats) == 0)
 	{
 		if ( !S_ISDIR(filestats.st_mode) )
 			break;
@@ -739,7 +549,7 @@ int ftpLIST(PFTPCONTEXT context, const char *params)
 
 		pthread_mutex_lock(&context->MTLock);
 
-		context->WorkerThreadValid = pthread_create(&tid, NULL, (__ptr_thread_start_routine)&list_thread, context);
+		context->WorkerThreadValid = pthread_create(&tid, NULL, (void * (*)(void *))list_thread, context);
 		if ( context->WorkerThreadValid == 0 )
 			context->WorkerThreadId = tid;
 		else
@@ -753,6 +563,11 @@ int ftpLIST(PFTPCONTEXT context, const char *params)
 	return sendstring(context, error550);
 }
 
+/*
+ * Cuts off filename from string leaving only path.
+ * Return value: pointer to a terminating null character at the end of path
+ */
+
 int ftpCDUP(PFTPCONTEXT context, const char *params)
 {
 	if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
@@ -761,7 +576,6 @@ int ftpCDUP(PFTPCONTEXT context, const char *params)
 	if ( strcmp(context->CurrentDir, "/") == 0 )
 		return sendstring(context, success250);
 
-	delete_last_slash(context->CurrentDir);
 	filepath(context->CurrentDir);
 
 	writelogentry(context, " CDUP", "");
@@ -771,7 +585,6 @@ int ftpCDUP(PFTPCONTEXT context, const char *params)
 int ftpCWD(PFTPCONTEXT context, const char *params)
 {
 	struct	stat	filestats;
-	size_t			rl;
 
 	if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
 		return sendstring(context, error530);
@@ -779,17 +592,13 @@ int ftpCWD(PFTPCONTEXT context, const char *params)
 	if ( params == NULL )
 		return sendstring(context, error501);
 
-	if (finalpath(
-			context->RootDir,
-			context->CurrentDir,
-			(char *)params, context->GPBuffer) == NULL)
-		return 0;
+	ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
-	if ( stat(context->GPBuffer, &filestats) == 0 )
+	if ( stat(context->FileName, &filestats) == 0 )
 		if ( S_ISDIR(filestats.st_mode) )
 		{
-			rl = strlen(context->RootDir);
-			strcpy(context->CurrentDir, context->GPBuffer+rl);
+		    ftp_effective_path("/", context->CurrentDir, params, sizeof(context->FileName), context->FileName);
+			strcpy(context->CurrentDir, context->FileName);
 			writelogentry(context, " CWD: ", context->CurrentDir);
 			return sendstring(context, success250);
 		}
@@ -830,7 +639,7 @@ void *retr_thread(PFTPCONTEXT context)
 
 		if (context->TLS_session != NULL)
 		{
-			InitTLSSession(&TLS_datasession, clientsocket, 0);
+			ftp_init_tls_session(&TLS_datasession, clientsocket, 0);
 			buffer_size = gnutls_record_get_max_size(TLS_datasession);
 			if (buffer_size > TRANSMIT_BUFFER_SIZE)
 				buffer_size = TRANSMIT_BUFFER_SIZE;
@@ -838,7 +647,7 @@ void *retr_thread(PFTPCONTEXT context)
 		else
 			buffer_size = TRANSMIT_BUFFER_SIZE;
 
-		f = open(context->GPBuffer, O_RDONLY);
+		f = open(context->FileName, O_RDONLY);
 		context->File = f;
 		if (f == -1)
 			break;
@@ -861,15 +670,6 @@ void *retr_thread(PFTPCONTEXT context)
 				sent_ok = 0;
 				break;
 			}
-
-            /* heartbeat to control channel */
-            clock_gettime(CLOCK_MONOTONIC, &t);
-            if (t.tv_sec >= dtx)
-            {
-               dtx += 120;
-               sendstring(context, "\r\n");
-               writelogentry(context, "keepalive sent", "");
-            }
 		}
 
 		/* calculating performance */
@@ -878,7 +678,7 @@ void *retr_thread(PFTPCONTEXT context)
 		lt1 = t.tv_sec*1e9 + t.tv_nsec;
 		dtx = lt1 - lt0;
 	    snprintf(buffer, buffer_size, " RETR complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
-	    	sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
+	    	sz_total, sz_total/1048576.0f, dtx/1000000000.0f, (1000000000.0f*sz_total)/dtx/1048576.0f);
         writelogentry(context, buffer, "");
 
 		break;
@@ -934,13 +734,9 @@ int ftpRETR(PFTPCONTEXT context, const char *params)
 		context->File = -1;
 	}
 
-	if (finalpath(
-			context->RootDir,
-			context->CurrentDir,
-			(char *)params, context->GPBuffer) == NULL)
-		return 0;
+	ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
-	while (stat(context->GPBuffer, &filestats) == 0)
+	while (stat(context->FileName, &filestats) == 0)
 	{
 		if ( S_ISDIR(filestats.st_mode) )
 			break;
@@ -951,7 +747,7 @@ int ftpRETR(PFTPCONTEXT context, const char *params)
 
 		pthread_mutex_lock(&context->MTLock);
 
-		context->WorkerThreadValid = pthread_create(&tid, NULL, (__ptr_thread_start_routine)&retr_thread, context);
+		context->WorkerThreadValid = pthread_create(&tid, NULL, (void * (*)(void *))retr_thread, context);
 		if ( context->WorkerThreadValid == 0 )
 			context->WorkerThreadId = tid;
 		else
@@ -971,7 +767,7 @@ int ftpABOR(PFTPCONTEXT context, const char *params)
 		return sendstring(context, error530);
 
 	writelogentry(context, " ABORT command", NULL);
-	WorkerThreadCleanup(context);
+	ftp_worker_thread_cleanup(context);
 	return sendstring(context, success226);
 }
 
@@ -984,13 +780,9 @@ int ftpDELE(PFTPCONTEXT context, const char *params)
 	if ( params == NULL )
 		return sendstring(context, error501);
 
-	if (finalpath(
-			context->RootDir,
-			context->CurrentDir,
-			(char *)params, context->GPBuffer) == NULL)
-		return 0;
+	ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
-	if ( unlink(context->GPBuffer) == 0 ) {
+	if ( unlink(context->FileName) == 0 ) {
 		sendstring(context, success250);
 		writelogentry(context, " DELE: ", (char *)params);
 	}
@@ -1084,20 +876,22 @@ int ftpEPSV (PFTPCONTEXT context, const char *params)
 	if (pasv(context) == 0)
 		return 1;
 
-	snprintf(context->GPBuffer, SIZE_OF_GPBUFFER, success229,
+	snprintf(context->FileName, sizeof(context->FileName),
+	        "229 Entering Extended Passive Mode (|||%u|)\r\n",
 			ntohs(context->DataPort));
 
 	writelogentry(context, " entering extended passive mode", "");
 
-	return sendstring(context, context->GPBuffer);
+	return sendstring(context, context->FileName);
 }
 
 int ftpPASV(PFTPCONTEXT context, const char *params)
 {
-	if (pasv(context) == 0)
+    if (pasv(context) == 0)
 		return 1;
 
-	snprintf(context->GPBuffer, SIZE_OF_GPBUFFER, success227,
+	snprintf(context->FileName, sizeof(context->FileName),
+	        "227 Entering Passive Mode (%u,%u,%u,%u,%u,%u).\r\n",
 			context->DataIPv4 & 0xff,
 			(context->DataIPv4 >> 8) & 0xff,
 			(context->DataIPv4 >> 16) & 0xff,
@@ -1107,7 +901,7 @@ int ftpPASV(PFTPCONTEXT context, const char *params)
 
 	writelogentry(context, " entering passive mode", "");
 
-	return sendstring(context, context->GPBuffer);
+	return sendstring(context, context->FileName);
 }
 
 int ftpPASS(PFTPCONTEXT context, const char *params)
@@ -1120,9 +914,9 @@ int ftpPASS(PFTPCONTEXT context, const char *params)
 	memset(temptext, 0, sizeof(temptext));
 
 	/*
-	 * we have username saved in context->GPBuffer from USER command
+	 * we have login name saved in context->FileName from USER command
 	 */
-	if (!ParseConfig(g_cfg.ConfigFile, context->GPBuffer, "pswd", temptext, sizeof(temptext)))
+	if (!config_parse(g_cfg.ConfigFile, context->FileName, "pswd", temptext, sizeof(temptext)))
 		return sendstring(context, error530_r);
 
 	if ( (strcmp(temptext, params) == 0) || (temptext[0] == '*') )
@@ -1130,8 +924,8 @@ int ftpPASS(PFTPCONTEXT context, const char *params)
 		memset(context->RootDir, 0, sizeof(context->RootDir));
 		memset(temptext, 0, sizeof(temptext));
 
-		ParseConfig(g_cfg.ConfigFile, context->GPBuffer, "root", context->RootDir, sizeof(context->RootDir));
-		ParseConfig(g_cfg.ConfigFile, context->GPBuffer, "accs", temptext, sizeof(temptext));
+		config_parse(g_cfg.ConfigFile, context->FileName, "root", context->RootDir, sizeof(context->RootDir));
+		config_parse(g_cfg.ConfigFile, context->FileName, "accs", temptext, sizeof(temptext));
 
 		context->Access = FTP_ACCESS_NOT_LOGGED_IN;
 		do {
@@ -1171,10 +965,11 @@ int ftpREST(PFTPCONTEXT context, const char *params)
 		return sendstring(context, error501);
 
 	context->RestPoint = strtoull(params, NULL, 10);
-	snprintf(context->GPBuffer, SIZE_OF_GPBUFFER, "%s %llu\r\n",
-			interm350, (unsigned long long int)context->RestPoint);
+	snprintf(context->FileName, sizeof(context->FileName),
+	        "350 REST supported. Ready to resume at byte offset %llu\r\n",
+			(unsigned long long int)context->RestPoint);
 
-	return sendstring(context, context->GPBuffer);
+	return sendstring(context, context->FileName);
 }
 
 int ftpSIZE(PFTPCONTEXT context, const char *params)
@@ -1186,17 +981,13 @@ int ftpSIZE(PFTPCONTEXT context, const char *params)
 	if ( params == NULL )
 		return sendstring(context, error501);
 
-	if (finalpath(
-			context->RootDir,
-			context->CurrentDir,
-			(char *)params, context->GPBuffer) == NULL)
-		return 0;
+	ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
-	if ( stat(context->GPBuffer, &filestats) == 0 )
+	if ( stat(context->FileName, &filestats) == 0 )
 	{
-		snprintf(context->GPBuffer, SIZE_OF_GPBUFFER, "213 %llu\r\n",
+		snprintf(context->FileName, sizeof(context->FileName), "213 %llu\r\n",
 				(unsigned long long int)filestats.st_size);
-		sendstring(context, context->GPBuffer);
+		sendstring(context, context->FileName);
 	}
 	else
 		sendstring(context, error550);
@@ -1213,13 +1004,9 @@ int ftpMKD(PFTPCONTEXT context, const char *params)
 	if ( params == NULL )
 		return sendstring(context, error501);
 
-	if (finalpath(
-			context->RootDir,
-			context->CurrentDir,
-			(char *)params, context->GPBuffer) == NULL)
-		return 0;
+	ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
-	if ( mkdir(context->GPBuffer, 0755) == 0 ) {
+	if ( mkdir(context->FileName, 0755) == 0 ) {
 		sendstring(context, success257);
 		writelogentry(context, " MKD: ", (char *)params);
 	}
@@ -1238,13 +1025,9 @@ int ftpRMD(PFTPCONTEXT context, const char *params)
 	if ( params == NULL )
 		return sendstring(context, error501);
 
-	if (finalpath(
-			context->RootDir,
-			context->CurrentDir,
-			(char *)params, context->GPBuffer) == NULL)
-		return 0;
+	ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
-	if ( rmdir(context->GPBuffer) == 0 ) {
+	if ( rmdir(context->FileName) == 0 ) {
 		sendstring(context, success250);
 		writelogentry(context, " DELE: ", (char *)params);
 	}
@@ -1285,7 +1068,7 @@ void *stor_thread(PFTPCONTEXT context)
 
 		if (context->TLS_session != NULL)
 		{
-			InitTLSSession(&TLS_datasession, clientsocket, 0);
+			ftp_init_tls_session(&TLS_datasession, clientsocket, 0);
 			buffer_size = gnutls_record_get_max_size(TLS_datasession);
 			if (buffer_size > TRANSMIT_BUFFER_SIZE)
 				buffer_size = TRANSMIT_BUFFER_SIZE;
@@ -1293,7 +1076,7 @@ void *stor_thread(PFTPCONTEXT context)
 		else
 			buffer_size = TRANSMIT_BUFFER_SIZE;
 
-		f = open(context->GPBuffer, O_CREAT | O_RDWR | O_TRUNC, S_IRWXU | S_IRGRP | S_IROTH);
+		f = open(context->FileName, O_CREAT | O_RDWR | O_TRUNC, S_IRWXU | S_IRGRP | S_IROTH);
 		context->File = f;
 		if (f == -1)
 			break;
@@ -1307,15 +1090,6 @@ void *stor_thread(PFTPCONTEXT context)
 			}
 			else
 				break;
-
-            /* heartbeat to control channel */
-            clock_gettime(CLOCK_MONOTONIC, &t);
-            if (t.tv_sec >= dtx)
-            {
-               dtx += 120;
-               sendstring(context, "\r\n");
-               writelogentry(context, "keepalive sent", "");
-            }
 		}
 
 		/* calculating performance */
@@ -1324,7 +1098,7 @@ void *stor_thread(PFTPCONTEXT context)
 		lt1 = t.tv_sec*1e9 + t.tv_nsec;
 		dtx = lt1 - lt0;
 		snprintf(buffer, buffer_size, " STOR complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
-				sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
+            sz_total, sz_total/1048576.0f, dtx/1000000000.0f, (1000000000.0f*sz_total)/dtx/1048576.0f);
 		writelogentry(context, buffer, "");
 
 		break;
@@ -1382,13 +1156,9 @@ int ftpSTOR(PFTPCONTEXT context, const char *params)
 		context->File = -1;
 	}
 
-	if (finalpath(
-			context->RootDir,
-			context->CurrentDir,
-			(char *)params, context->GPBuffer) == NULL)
-		return 0;
+	ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
-	if ( stat(context->GPBuffer, &filestats) == 0 )
+	if ( stat(context->FileName, &filestats) == 0 )
 	{
 		if ( context->Access != FTP_ACCESS_FULL )
 			return sendstring(context, error550_r);
@@ -1400,7 +1170,7 @@ int ftpSTOR(PFTPCONTEXT context, const char *params)
 
 	pthread_mutex_lock(&context->MTLock);
 
-	context->WorkerThreadValid = pthread_create(&tid, NULL, (__ptr_thread_start_routine)&stor_thread, context);
+	context->WorkerThreadValid = pthread_create(&tid, NULL, (void * (*)(void *))stor_thread, context);
 	if ( context->WorkerThreadValid == 0 )
 		context->WorkerThreadId = tid;
 	else
@@ -1466,7 +1236,7 @@ void *append_thread(PFTPCONTEXT context)
 
 		if (context->TLS_session != NULL)
 		{
-			InitTLSSession(&TLS_datasession, clientsocket, 0);
+			ftp_init_tls_session(&TLS_datasession, clientsocket, 0);
 			buffer_size = gnutls_record_get_max_size(TLS_datasession);
 			if (buffer_size > TRANSMIT_BUFFER_SIZE)
 				buffer_size = TRANSMIT_BUFFER_SIZE;
@@ -1474,7 +1244,7 @@ void *append_thread(PFTPCONTEXT context)
 		else
 			buffer_size = TRANSMIT_BUFFER_SIZE;
 
-		f = open(context->GPBuffer, O_RDWR);
+		f = open(context->FileName, O_RDWR);
 		context->File = f;
 		if (f == -1)
 			break;
@@ -1490,15 +1260,6 @@ void *append_thread(PFTPCONTEXT context)
 			}
 			else
 				break;
-
-            /* heartbeat to control channel */
-            clock_gettime(CLOCK_MONOTONIC, &t);
-            if (t.tv_sec >= dtx)
-            {
-               dtx += 120;
-               sendstring(context, "\r\n");
-               writelogentry(context, "keepalive sent", "");
-            }
 		}
 
 		/* calculating performance */
@@ -1507,7 +1268,7 @@ void *append_thread(PFTPCONTEXT context)
 		lt1 = t.tv_sec*1e9 + t.tv_nsec;
 		dtx = lt1 - lt0;
 		snprintf(buffer, buffer_size, " APPE complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
-				sz_total, sz_total/1048576.0, dtx/1000000000.0, (1000000000.0*sz_total)/dtx/1048576);
+            sz_total, sz_total/1048576.0f, dtx/1000000000.0f, (1000000000.0f*sz_total)/dtx/1048576.0f);
 		writelogentry(context, buffer, "");
 
 		break;
@@ -1565,20 +1326,12 @@ int ftpAPPE(PFTPCONTEXT context, const char *params)
 		context->File = -1;
 	}
 
-	if (finalpath(
-			context->RootDir,
-			context->CurrentDir,
-			(char *)params, context->GPBuffer) == NULL)
-		return 0;
+	ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
-	/*
-	 * stat must NOT fail
-	 */
-	while (stat(context->GPBuffer, &filestats) == 0)
+	/* stat must NOT fail */
+	while (stat(context->FileName, &filestats) == 0)
 	{
-		/*
-		 * do not try to "append" for directories
-		*/
+		/* do not try to "append" for directories */
 		if ( S_ISDIR(filestats.st_mode) )
 			break;
 
@@ -1588,7 +1341,7 @@ int ftpAPPE(PFTPCONTEXT context, const char *params)
 
 		pthread_mutex_lock(&context->MTLock);
 
-		context->WorkerThreadValid = pthread_create(&tid, NULL, (__ptr_thread_start_routine)&append_thread, context);
+		context->WorkerThreadValid = pthread_create(&tid, NULL, (void * (*)(void *))append_thread, context);
 		if ( context->WorkerThreadValid == 0 )
 			context->WorkerThreadId = tid;
 		else
@@ -1613,15 +1366,11 @@ int ftpRNFR(PFTPCONTEXT context, const char *params)
 	if ( params == NULL )
 		return sendstring(context, error501);
 
-	if (finalpath(
-			context->RootDir,
-			context->CurrentDir,
-			(char *)params, context->GPBuffer) == NULL)
-		return 0;
+	ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->RnFrom), context->RnFrom);
 
-	if ( stat(context->GPBuffer, &filestats) == 0 )
+	if ( stat(context->RnFrom, &filestats) == 0 )
 	{
-		writelogentry(context, " RNFR: ", context->GPBuffer);
+		writelogentry(context, " RNFR: ", context->RnFrom);
 		sendstring(context, interm350_ren);
 	}
 	else
@@ -1632,8 +1381,6 @@ int ftpRNFR(PFTPCONTEXT context, const char *params)
 
 int ftpRNTO(PFTPCONTEXT context, const char *params)
 {
-	char	*_text;
-
 	if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
 		return sendstring(context, error530);
 	if ( context->Access < FTP_ACCESS_FULL )
@@ -1641,26 +1388,16 @@ int ftpRNTO(PFTPCONTEXT context, const char *params)
 	if ( params == NULL )
 		return sendstring(context, error501);
 
-	_text = x_malloc(SIZE_OF_GPBUFFER);
-
-	if (finalpath(
-			context->RootDir,
-			context->CurrentDir,
-			(char *)params, _text) == NULL)
+	ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
+	if ( rename(context->RnFrom, context->FileName) == 0 )
 	{
-		free(_text);
-		return 0;
-	}
-
-	if ( rename(context->GPBuffer, _text) == 0 )
-	{
-		writelogentry(context, " RNTO: ", _text);
+		writelogentry(context, " RNTO: ", context->FileName);
 		sendstring(context, success250);
 	}
 	else
 		sendstring(context, error550);
 
-	free(_text);
+	memset(&context->RnFrom, 0, sizeof(context->RnFrom));
 	return 1;
 }
 
@@ -1681,7 +1418,7 @@ int ftpAUTH(PFTPCONTEXT context, const char *params)
 
 	if ( strcasecmp(params, "TLS") == 0 )
 		/* InitTLSSession will send reply */
-		return InitTLSSession(&context->TLS_session, context->ControlSocket, 1);
+		return ftp_init_tls_session(&context->TLS_session, context->ControlSocket, 1);
 	else
 		return sendstring(context, error504);
 }
@@ -1728,7 +1465,7 @@ int ftpPROT (PFTPCONTEXT context, const char *params)
 
 int mlsd_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *entry)
 {
-	char			text[SIZE_OF_GPBUFFER], *entrytype, *sizetype;
+	char			text[2*PATH_MAX], *entrytype, *sizetype;
 	struct stat		filestats;
 	struct tm		ftm_fields;
 
@@ -1737,9 +1474,7 @@ int mlsd_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *
 	if (strcmp(entry->d_name, "..") == 0)
 		return 1;
 
-	strcpy(text, dirname);
-	add_last_slash(text);
-	strcat(text, entry->d_name);
+	snprintf(text, sizeof(text), "%s/%s", dirname, entry->d_name);
 
 	if ( lstat(text, &filestats) == 0 )
 	{
@@ -1777,7 +1512,7 @@ int mlsd_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *
 	return sendstring_auto(s, session, text);
 }
 
-void *msld_thread(PFTPCONTEXT context)
+void *mlsd_thread(PFTPCONTEXT context)
 {
 	SOCKET				clientsocket;
 	gnutls_session_t	TLS_datasession;
@@ -1794,14 +1529,14 @@ void *msld_thread(PFTPCONTEXT context)
 	while (clientsocket != INVALID_SOCKET)
 	{
 		if (context->TLS_session != NULL)
-			InitTLSSession(&TLS_datasession, clientsocket, 0);
+			ftp_init_tls_session(&TLS_datasession, clientsocket, 0);
 
-		pdir = opendir(context->GPBuffer);
+		pdir = opendir(context->FileName);
 		if (pdir == NULL)
 			break;
 
 		while ((entry = readdir(pdir)) != NULL) {
-			ret = mlsd_sub(context->GPBuffer, clientsocket, TLS_datasession, entry);
+			ret = mlsd_sub(context->FileName, clientsocket, TLS_datasession, entry);
 			if ( (ret == 0) || (context->WorkerThreadAbort != 0 ))
 				break;
 		}
@@ -1847,13 +1582,9 @@ int ftpMLSD(PFTPCONTEXT context, const char *params)
 	if (context->WorkerThreadValid == 0)
 		return sendstring(context, error550_t);
 
-	if (finalpath(
-			context->RootDir,
-			context->CurrentDir,
-			(char *)params, context->GPBuffer) == NULL)
-		return 0;
+	ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
-	while (stat(context->GPBuffer, &filestats) == 0)
+	while (stat(context->FileName, &filestats) == 0)
 	{
 		if ( !S_ISDIR(filestats.st_mode) )
 			break;
@@ -1864,7 +1595,7 @@ int ftpMLSD(PFTPCONTEXT context, const char *params)
 
 		pthread_mutex_lock(&context->MTLock);
 
-		context->WorkerThreadValid = pthread_create(&tid, NULL, (__ptr_thread_start_routine)&msld_thread, context);
+		context->WorkerThreadValid = pthread_create(&tid, NULL, (void * (*)(void *))mlsd_thread, context);
 		if ( context->WorkerThreadValid == 0 )
 			context->WorkerThreadId = tid;
 		else
@@ -1915,7 +1646,7 @@ int recvcmd(PFTPCONTEXT context, char *buffer, size_t buffer_size)
 void *ftp_client_thread(SOCKET *s)
 {
 	FTPCONTEXT				ctx __attribute__ ((aligned (16)));
-	char					*cmd, *params, rcvbuf[FTP_PATH_MAX*2];
+	char					*cmd, *params, rcvbuf[PATH_MAX];
 	int						c, cmdno, rv;
 	size_t					i, cmdlen;
 	socklen_t				asz;
@@ -1925,7 +1656,6 @@ void *ftp_client_thread(SOCKET *s)
 	memset(&ctx, 0, sizeof(ctx));
 	ctx.Access = FTP_ACCESS_NOT_LOGGED_IN;
 	ctx.ControlSocket = *s;
-	ctx.GPBuffer = x_malloc(SIZE_OF_GPBUFFER);
 
 	memset(&laddr, 0, sizeof(laddr));
 	asz = sizeof(laddr);
@@ -1993,10 +1723,10 @@ void *ftp_client_thread(SOCKET *s)
 			cmdno = -1;
 			rv = 1;
 			for (c=0; c<MAX_CMDS; c++)
-				if (strncasecmp(cmd, ftpcmds[c], cmdlen) == 0)
+				if (strncasecmp(cmd, ftpprocs[c].Name, cmdlen) == 0)
 				{
 					cmdno = c;
-					rv = ftpprocs[c](&ctx, params);
+					rv = ftpprocs[c].Proc(&ctx, params);
 					break;
 				}
 
@@ -2012,7 +1742,7 @@ void *ftp_client_thread(SOCKET *s)
 				break;
 		};
 
-		WorkerThreadCleanup(&ctx);
+		ftp_worker_thread_cleanup(&ctx);
 
 		pthread_mutex_destroy(&ctx.MTLock);
 		pthread_mutexattr_destroy(&m_attr);
@@ -2023,10 +1753,28 @@ void *ftp_client_thread(SOCKET *s)
 	if (ctx.TLS_session != NULL)
 		gnutls_deinit(ctx.TLS_session);
 
-	free(ctx.GPBuffer);
 	close(ctx.ControlSocket);
 	*s = INVALID_SOCKET;
 	return NULL;
+}
+
+void socket_set_keepalive(int s) {
+	int opt = 1;
+
+	if (setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(opt)) != 0)
+	{
+	    printf("\r\n SO_KEEPALIVE set failed.\r\n");
+	    return;
+	}
+
+    opt = 16; /* set idle status after 16 seconds since last data transfer */;
+    setsockopt(s, IPPROTO_TCP, TCP_KEEPIDLE, &opt, sizeof(opt));
+
+    opt = 16; /* send keep alive packet every 16 seconds */
+    setsockopt(s, IPPROTO_TCP, TCP_KEEPINTVL, &opt, sizeof(opt));
+
+    opt = 8; /* drop after 8 unanswered packets */
+    setsockopt(s, IPPROTO_TCP, TCP_KEEPCNT, &opt, sizeof(opt));
 }
 
 void *ftpmain(void *p)
@@ -2081,8 +1829,11 @@ void *ftpmain(void *p)
 			for (i=0; i<g_cfg.MaxUsers; i++) {
 				if ( scb[i] == INVALID_SOCKET ) {
 
+					if (g_cfg.EnableKeepalive != 0)
+						socket_set_keepalive(clientsocket);
+
 					scb[i] = clientsocket;
-					rv = pthread_create(&th, NULL, (__ptr_thread_start_routine)&ftp_client_thread, &scb[i]);
+					rv = pthread_create(&th, NULL, (void * (*)(void *))ftp_client_thread, &scb[i]);
 					if ( rv != 0 )
 						scb[i] = INVALID_SOCKET;
 
