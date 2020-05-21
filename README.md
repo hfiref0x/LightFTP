@@ -6,7 +6,7 @@
 # System Requirements
 
 * x86-32/x64 POSIX compliant OS, e.g. Linux.
-* x86-32/x64 Windows Vista/7/8/8.1/10 with Cygwin (see Build section of this readme).
+* x86-32/x64 Windows 7/8/8.1/10 with Cygwin (see Build section of this readme).
 * No admin/root privileges required. FTP server must be allowed in firewall.
 
 # Configuration
@@ -68,6 +68,12 @@ Path to PEM private key file for your certificate.
       KeyfilePassword
 
 Password to decrypt private key.
+
+      keepalive
+
+Send keepalive packets (some NATs may require this).
+Default: 1 (enabled)
+
 
 # User sections
 
