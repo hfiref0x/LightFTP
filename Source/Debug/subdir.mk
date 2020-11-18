@@ -32,7 +32,7 @@ C_DEPS += \
 %.o: ../%.c
 	@echo 'Building file: $<'
 	@echo 'Invoking: GCC C Compiler'
-	gcc -std=c99 -D_GNU_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g3 -pedantic -Wall -Wextra -Wno-unused-parameter -c -fmessage-length=0 -fno-ident  -D_GNU_SOURCE -v -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -o "$@" "$<"
+	$(CC) $(CFLAGS) -std=c99 -D_GNU_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g3 -pedantic -Wall -Wextra -Wno-unused-parameter -c -fmessage-length=0 -fno-ident  -D_GNU_SOURCE -v -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -o "$@" "$<"
 	@echo 'Finished building: $<'
 	@echo ' '
 
