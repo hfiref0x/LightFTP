@@ -1,7 +1,7 @@
 /*
  * fspathtools.c
  *
- *  Created on: May 17, 2020
+ *  Created on: Nov 18, 2020
  *      Author: lightftp
  */
 
@@ -9,7 +9,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <linux/limits.h>
 
 #include "x_malloc.h"
 
