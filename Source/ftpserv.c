@@ -252,8 +252,12 @@ int ftpUSER(PFTPCONTEXT context, const char *params)
 
 int ftpQUIT(PFTPCONTEXT context, const char *params)
 {
+	char text[PATH_MAX];
+
 	writelogentry(context, " QUIT", "");
-	sendstring(context, success221);
+	snprintf(text, sizeof(text), "221 %s\r\n", GOODBYE_MSG);
+	/* sendstring(context, success221); */
+	sendstring(context, text);
 
 	/* return 0 to break command processing loop */
 	return 0;

@@ -16,6 +16,7 @@ FTP_CONFIG   g_cfg;
 int          g_log = -1;
 
 static char  CAFILE[PATH_MAX], CERTFILE[PATH_MAX], KEYFILE[PATH_MAX], KEYFILE_PASS[256];
+char         GOODBYE_MSG[MSG_MAXLEN];
 
 gnutls_dh_params_t					dh_params = NULL;
 gnutls_certificate_credentials_t	x509_cred = NULL;
@@ -87,6 +88,7 @@ int main(int argc, char *argv[])
 		config_parse(cfg, CONFIG_SECTION_NAME, "ServerCertificate", CERTFILE, sizeof(CERTFILE));
 		config_parse(cfg, CONFIG_SECTION_NAME, "Keyfile", KEYFILE, sizeof(KEYFILE));
 		config_parse(cfg, CONFIG_SECTION_NAME, "KeyfilePassword", KEYFILE_PASS, sizeof(KEYFILE_PASS));
+		config_parse(cfg, CONFIG_SECTION_NAME, "goodbyemsg", GOODBYE_MSG, sizeof(GOODBYE_MSG));
 
 		memset(textbuf, 0, bufsize);
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "logfilepath", textbuf, bufsize))
@@ -147,18 +149,17 @@ int main(int argc, char *argv[])
 	}
 
     if (cfg == NULL)
-		printf("Could not find configuration file\r\n\r\n Usage: fftp [CONFIGFILE]\r\n\r\n");
+        printf("Could not find configuration file\r\n\r\n Usage: fftp [CONFIGFILE]\r\n\r\n");
+    else
+        free(cfg);
 
-	if (g_log != -1) 
+    if (g_log != -1)
         close(g_log);
 
-	if (cfg != NULL)
-		free(cfg);
+    if (textbuf != NULL)
+        free(textbuf);
 
-	if (textbuf != NULL)
-		free(textbuf);
-
-	ftp_tls_cleanup();
+    ftp_tls_cleanup();
 
 	exit(2);
 }

@@ -68,6 +68,7 @@ typedef struct _FTP_CONFIG {
 #define SOCKET               int
 #define MODE_NORMAL          0
 #define MODE_PASSIVE         1
+#define MSG_MAXLEN           128
 
 /*
  * NOT_LOGGED_IN = "banned" in config. Not logged in or banned.
@@ -122,7 +123,7 @@ typedef struct _FTPROUTINE_ENTRY {
 extern FTP_CONFIG   g_cfg;
 extern int          g_log;
 extern void*        ftpmain(void* p);
-
+extern char         GOODBYE_MSG[MSG_MAXLEN];
 extern gnutls_certificate_credentials_t     x509_cred;
 extern gnutls_priority_t                    priority_cache;
 
