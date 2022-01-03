@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: May 15, 2020
+*  Modified on: Jan 3, 2022
 *
 *      Author: lightftp
 */
@@ -21,6 +21,7 @@ char         GOODBYE_MSG[MSG_MAXLEN];
 gnutls_dh_params_t					dh_params = NULL;
 gnutls_certificate_credentials_t	x509_cred = NULL;
 gnutls_priority_t					priority_cache = NULL;
+gnutls_datum_t                      session_keys_storage = {0};
 
 void ftp_tls_init();
 void ftp_tls_cleanup();
@@ -28,7 +29,7 @@ void ftp_tls_cleanup();
 /* Program entry point */
 int main(int argc, char *argv[])
 {
-	char		*cfg = NULL, *textbuf = NULL;
+	char		*cfg = NULL, *textbuf = NULL, *p;
 	int			c;
 	uint32_t	bufsize = 65536;
 	pthread_t	thid;
@@ -110,8 +111,9 @@ int main(int argc, char *argv[])
 		printf("\r\n    [ LightFTP server v2.1 ]\r\n\r\n");
 		printf("Log file        : %s\r\n", textbuf);
 
-		getcwd(textbuf, bufsize);
-		printf("Working dir     : %s\r\n", textbuf);
+		p = getcwd(textbuf, bufsize);
+		if (p != NULL )
+			printf("Working dir     : %s\r\n", textbuf);
 
 		if (argc > 1)
 			printf("Config file     : %s\r\n", argv[1]);
@@ -180,6 +182,9 @@ void ftp_tls_init()
     	if (gnutls_priority_init(&priority_cache, NULL, NULL) < 0)
     		break;
 
+    	if (gnutls_session_ticket_key_generate(&session_keys_storage) != GNUTLS_E_SUCCESS)
+    	    break;
+
 #if GNUTLS_VERSION_NUMBER >= 0x030506
     	gnutls_certificate_set_known_dh_params(x509_cred, GNUTLS_SEC_PARAM_HIGH);
 #else
@@ -203,6 +208,12 @@ void ftp_tls_cleanup()
 
 	if ( priority_cache != NULL )
 		gnutls_priority_deinit(priority_cache);
+
+	if (session_keys_storage.data)
+	{
+	    gnutls_memset(session_keys_storage.data, 0, session_keys_storage.size);
+	    gnutls_free(session_keys_storage.data);
+	}
 
 	gnutls_global_deinit();
 }

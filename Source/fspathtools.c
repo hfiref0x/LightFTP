@@ -163,7 +163,7 @@ int ftp_normalize_path(char* path, size_t npath_len, char* npath)
 int ftp_effective_path(char *root_path, char *current_path,
         char *file_path, size_t result_size, char *result)
 {
-    char    path[PATH_MAX], npath[PATH_MAX];
+    char    path[PATH_MAX*2], normalized_path[PATH_MAX];
     int     status;
     size_t  len;
 
@@ -174,18 +174,18 @@ int ftp_effective_path(char *root_path, char *current_path,
 
     if (*file_path == '/')
     {
-        status = ftp_normalize_path(file_path, PATH_MAX, npath);
+        status = ftp_normalize_path(file_path, PATH_MAX, normalized_path);
     }
     else
     {
-        snprintf(path, PATH_MAX, "%s/%s", current_path, file_path);
-        status = ftp_normalize_path(path, PATH_MAX, npath);
+        snprintf(path, PATH_MAX*2, "%s/%s", current_path, file_path);
+        status = ftp_normalize_path(path, PATH_MAX, normalized_path);
     }
 
     if (status == 0)
         return 0;
 
-    snprintf(path, PATH_MAX, "%s/%s", root_path, npath);
+    snprintf(path, PATH_MAX*2, "%s/%s", root_path, normalized_path);
     status = ftp_normalize_path(path, result_size, result);
 
     /* delete last slash */

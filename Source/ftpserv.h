@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: May 15, 2020
+*  Modified on: Jan 3, 2022
 *
 *      Author: lightftp
 */
@@ -84,6 +84,13 @@ typedef struct _FTP_CONFIG {
 
 #define TRANSMIT_BUFFER_SIZE    65536
 
+typedef struct _SESSION_STATS {
+    uint64_t    DataRx;
+    uint64_t    DataTx;
+    uint64_t    FilesRx;
+    uint64_t    FilesTx;
+} SESSION_STATS, *PSESSION_STATS;
+
 typedef struct _FTPCONTEXT {
     pthread_mutex_t     MTLock;
     SOCKET              ControlSocket;
@@ -105,12 +112,13 @@ typedef struct _FTPCONTEXT {
     int                 SessionID;
     int                 DataProtectionLevel;
     off_t               RestPoint;
-    unsigned long int   BlockSize;
+    uint64_t            BlockSize;
     char                CurrentDir[PATH_MAX];
     char                RootDir[PATH_MAX];
     char                RnFrom[PATH_MAX];
     char                FileName[2*PATH_MAX];
     gnutls_session_t    TLS_session;
+    SESSION_STATS       Stats;
 } FTPCONTEXT, *PFTPCONTEXT;
 
 typedef int (*FTPROUTINE) (PFTPCONTEXT context, const char* params);
@@ -124,8 +132,10 @@ extern FTP_CONFIG   g_cfg;
 extern int          g_log;
 extern void*        ftpmain(void* p);
 extern char         GOODBYE_MSG[MSG_MAXLEN];
+
 extern gnutls_certificate_credentials_t     x509_cred;
 extern gnutls_priority_t                    priority_cache;
+extern gnutls_datum_t                       session_keys_storage;
 
 #define FTP_COMMAND(cmdname)    int cmdname(PFTPCONTEXT context, const char* params)
 #define MAX_CMDS                32
@@ -172,11 +182,11 @@ extern const char success211[];
 extern const char success214[];
 
 #define success215     "215 UNIX Type: L8\r\n"
-#define success220     "220 LightFTP server v2.1 ready\r\n"
+#define success220     "220 LightFTP server v2.2 ready\r\n"
 #define success221     "221 Goodbye!\r\n"
 #define success226     "226 Transfer complete. Closing data connection.\r\n"
 #define success230     "230 User logged in, proceed.\r\n"
-#define success234     "234 AUTH command OK. Initializing TLS connection.\r\n"
+#define success234     "234 AUTH command OK. Initialize TLS connection.\r\n"
 #define success250     "250 Requested file action okay, completed.\r\n"
 #define success257     "257 Directory created.\r\n"
 #define error425       "425 Can not open data connection.\r\n"
