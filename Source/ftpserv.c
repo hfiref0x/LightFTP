@@ -616,7 +616,8 @@ int ftpCWD(PFTPCONTEXT context, const char *params)
         if ( S_ISDIR(filestats.st_mode) )
         {
             ftp_effective_path("/", context->CurrentDir, params, sizeof(context->FileName), context->FileName);
-            strcpy(context->CurrentDir, context->FileName);
+            memset(context->CurrentDir, 0, sizeof(context->CurrentDir));
+            strncpy(context->CurrentDir, context->FileName, sizeof(context->CurrentDir)-1);
             writelogentry(context, " CWD: ", context->CurrentDir);
             return sendstring(context, success250);
         }
