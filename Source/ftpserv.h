@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Jan 3, 2022
+*  Modified on: Jan 4, 2022
 *
 *      Author: lightftp
 */
@@ -61,6 +61,7 @@ typedef struct _FTP_CONFIG {
     in_addr_t       LocalIPMask;
 } FTP_CONFIG, *PFTP_CONFIG;
 
+#define FTP_VERSION          "2.2"
 #define CONFIG_FILE_NAME     "fftp.conf"
 #define CONFIG_SECTION_NAME  "ftpconfig"
 #define DEFAULT_FTP_PORT     21
@@ -182,7 +183,7 @@ extern const char success211[];
 extern const char success214[];
 
 #define success215     "215 UNIX Type: L8\r\n"
-#define success220     "220 LightFTP server v2.2 ready\r\n"
+#define success220     "220 LightFTP server ready\r\n"
 #define success221     "221 Goodbye!\r\n"
 #define success226     "226 Transfer complete. Closing data connection.\r\n"
 #define success230     "230 User logged in, proceed.\r\n"

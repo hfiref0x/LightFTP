@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Jan 3, 2022
+*  Modified on: Jan 4, 2022
 *
 *      Author: lightftp
 */
@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
         if (g_log != -1)
             lseek(g_log, 0L, SEEK_END);
 
-		printf("\r\n    [ LightFTP server v2.1 ]\r\n\r\n");
+		printf("\r\n    [ LightFTP server v%s ]\r\n\r\n", FTP_VERSION);
 		printf("Log file        : %s\r\n", textbuf);
 
 		p = getcwd(textbuf, bufsize);

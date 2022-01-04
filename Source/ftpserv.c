@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Jan 3, 2022
+ *  Modified on: Jan 4, 2022
  *
  *      Author: lightftp
  */
@@ -1825,11 +1825,12 @@ void *ftp_client_thread(SOCKET *s)
         pthread_mutex_destroy(&ctx.MTLock);
         pthread_mutexattr_destroy(&m_attr);
         snprintf(rcvbuf, sizeof(rcvbuf),
-                " User disconnected. \n==== Session statistics ====\n"
-                "Rx: %zd bytes (%f MBytes) total received by server in %zd files,\n"
-                "Tx: %zd bytes (%f MBytes) total sent to the client in %zd files.\n",
-                ctx.Stats.DataRx, ctx.Stats.DataRx/1048576.0f, ctx.Stats.FilesRx,
-                ctx.Stats.DataTx, ctx.Stats.DataTx/1048576.0f, ctx.Stats.FilesTx);
+            " User disconnected. \n==== Session %u statistics ====\n"
+            "Rx: %zd bytes (%f MBytes) total received by server in %zd files,\n"
+            "Tx: %zd bytes (%f MBytes) total sent to the client in %zd files.\n",
+            ctx.SessionID,
+            ctx.Stats.DataRx, ctx.Stats.DataRx / 1048576.0f, ctx.Stats.FilesRx,
+            ctx.Stats.DataTx, ctx.Stats.DataTx / 1048576.0f, ctx.Stats.FilesTx);
 
         writelogentry(&ctx, rcvbuf, "");
         break;

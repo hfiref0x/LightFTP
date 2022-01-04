@@ -137,4 +137,4 @@ Result binary is fftp. Next setup ftp config, example config file is Source/fftp
 
 # Authors
 
-(c) 2007 - 2020 LightFTP Project
+(c) 2007 - 2022 LightFTP Project
