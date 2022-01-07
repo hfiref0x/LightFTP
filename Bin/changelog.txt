@@ -2,6 +2,15 @@
 - Removed
 * Fixed/Changed
 
+Jan 7, 2022, v2.2
++ basic session statistics logged
++ TLS session resumption
+* zero-length files transfer error
++ chmod command implemented
++ goodbye message now configurable (#21)
++ readme and fftp example config updated
++ hardcode compiler in makefile changed (PR #20, #19)
+
 May 17, 2020, v2.1
 * bugfixes and refactoring
 

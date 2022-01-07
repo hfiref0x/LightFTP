@@ -133,7 +133,15 @@ Next use the following:
       cd lightftp/Source/Release
       make
       
-Result binary is fftp. Next setup ftp config, example config file is Source/fftp.conf. Set port, accounts, path to log file (optionally if you need it), path to certificates if you want to use them, etc.
+Result binary is fftp. Next setup ftp config, example config file is Bin/fftp.conf. Set port, accounts, path to log file (optionally if you need it), path to certificates if you want to use them, etc.
+
+# Old Windows version
+
+Since 2.2 old Windows unmaintained version moved to the separate archive repository, https://github.com/hfiref0x/LightFTP_win.
+
+# Changelog
+
+Changelog available at Bin/changelog.txt
 
 # Authors
 
