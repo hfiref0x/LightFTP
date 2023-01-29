@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Jan 4, 2022
+*  Modified on: Jan 29, 2023
 *
 *      Author: lightftp
 */
@@ -61,7 +61,7 @@ typedef struct _FTP_CONFIG {
     in_addr_t       LocalIPMask;
 } FTP_CONFIG, *PFTP_CONFIG;
 
-#define FTP_VERSION          "2.2"
+#define FTP_VERSION          "2.3"
 #define CONFIG_FILE_NAME     "fftp.conf"
 #define CONFIG_SECTION_NAME  "ftpconfig"
 #define DEFAULT_FTP_PORT     21
@@ -107,7 +107,7 @@ typedef struct _FTPCONTEXT {
     in_addr_t           ClientIPv4;
     in_addr_t           DataIPv4;
     in_port_t           DataPort;
-    int                 File;
+    int                 hFile;
     int                 Mode;
     int                 Access;
     int                 SessionID;
@@ -115,6 +115,7 @@ typedef struct _FTPCONTEXT {
     off_t               RestPoint;
     uint64_t            BlockSize;
     char                CurrentDir[PATH_MAX];
+    char                UserName[PATH_MAX];
     char                RootDir[PATH_MAX];
     char                RnFrom[PATH_MAX];
     char                FileName[2*PATH_MAX];
@@ -122,12 +123,25 @@ typedef struct _FTPCONTEXT {
     SESSION_STATS       Stats;
 } FTPCONTEXT, *PFTPCONTEXT;
 
+#define LIST_TYPE_UNIX  0
+#define LIST_TYPE_MLSD  1
+#define STOR_TYPE_RECREATE_TRUNC  0
+#define STOR_TYPE_APPEND  1
+
+typedef struct _THCONTEXT {
+    PFTPCONTEXT     context;
+    char            thFileName[2*PATH_MAX];
+    int             FnType;
+} THCONTEXT, *PTHCONTEXT;
+
 typedef int (*FTPROUTINE) (PFTPCONTEXT context, const char* params);
 
 typedef struct _FTPROUTINE_ENTRY {
     const char* Name;
     FTPROUTINE  Proc;
 } FTPROUTINE_ENTRY, *PFTPROUTINE_ENTRY;
+
+typedef void * (*PSTARTROUTINE)(PTHCONTEXT);
 
 extern FTP_CONFIG   g_cfg;
 extern int          g_log;
@@ -210,6 +224,6 @@ extern const char success214[];
 #define interm150      "150 File status okay; about to open data connection.\r\n"
 #define interm350_ren  "350 File exists. Ready to rename.\r\n"
 
-#define NOSLOTS        "MAXIMUM ALLOWED USERS CONNECTED\r\n"
+#define error451_max   "451 MAXIMUM ALLOWED USERS CONNECTED.\r\n"
 
 #endif /* FTPSERV_H_ */
