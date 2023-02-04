@@ -2,6 +2,11 @@
 - Removed
 * Fixed/Changed
 
+Feb 4, 2023, v2.3
+* fix CVE-2023-24042 (#25) 
++ more statistics added
++ internal rearrange
+
 Jan 7, 2022, v2.2
 + basic session statistics logged
 + TLS session resumption
