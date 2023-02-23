@@ -526,6 +526,7 @@ void *list_thread(PTHCONTEXT tctx)
     struct dirent		*entry;
     PFTPCONTEXT         context = tctx->context;
 
+    pthread_detach(pthread_self());
     pthread_mutex_lock(&context->MTLock);
     pthread_cleanup_push(cleanup_handler, tctx);
     ret = 0;
@@ -667,6 +668,7 @@ void *retr_thread(PTHCONTEXT tctx)
     gnutls_session_t	TLS_datasession;
     PFTPCONTEXT         context = tctx->context;
 
+    pthread_detach(pthread_self());
     pthread_mutex_lock(&context->MTLock);
     pthread_cleanup_push(cleanup_handler, context);
 
@@ -1093,6 +1095,7 @@ void *stor_thread(PTHCONTEXT tctx)
     gnutls_session_t	TLS_datasession;
     PFTPCONTEXT         context = tctx->context;
 
+    pthread_detach(pthread_self());
     pthread_mutex_lock(&context->MTLock);
     pthread_cleanup_push(cleanup_handler, tctx);
 
@@ -1563,6 +1566,7 @@ void *ftp_client_thread(SOCKET s)
     struct sockaddr_in		laddr;
     pthread_mutexattr_t		m_attr;
 
+    pthread_detach(pthread_self());
     memset(&rcvbuf, 0, sizeof(rcvbuf));
     memset(&ctx, 0, sizeof(ctx));
 
