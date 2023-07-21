@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Jan 29, 2023
+ *  Modified on: Jul 22, 2023
  *
  *      Author: lightftp
  */
@@ -670,7 +670,7 @@ void *retr_thread(PTHCONTEXT tctx)
 
     pthread_detach(pthread_self());
     pthread_mutex_lock(&context->MTLock);
-    pthread_cleanup_push(cleanup_handler, context);
+    pthread_cleanup_push(cleanup_handler, tctx);
 
     f = -1;
     sent_ok = 0;
@@ -682,7 +682,7 @@ void *retr_thread(PTHCONTEXT tctx)
     lt0 = t.tv_sec*1e9 + t.tv_nsec;
     dtx = t.tv_sec+30;
 
-    buffer = malloc(TRANSMIT_BUFFER_SIZE);
+    buffer = x_malloc(TRANSMIT_BUFFER_SIZE);
     while (buffer != NULL)
     {
         clientsocket = create_datasocket(context);
@@ -1108,7 +1108,7 @@ void *stor_thread(PTHCONTEXT tctx)
     lt0 = t.tv_sec*1e9 + t.tv_nsec;
     dtx = t.tv_sec+30;
 
-    buffer = malloc(TRANSMIT_BUFFER_SIZE);
+    buffer = x_malloc(TRANSMIT_BUFFER_SIZE);
     while (buffer != NULL)
     {
         clientsocket = create_datasocket(context);
