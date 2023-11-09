@@ -2,6 +2,9 @@
 # Automatically-generated file. Do not edit!
 ################################################################################
 
+# CC = gcc
+# CFLAGS = -fPIC -fprofile-arcs -ftest-coverage
+
 -include ../makefile.init
 
 RM := rm -rf
@@ -28,9 +31,18 @@ all: fftp
 fftp: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC C Linker'
-	$(CC) $(CFLAGS) -pthread -o "fftp" $(OBJS) $(USER_OBJS) $(LIBS)
+	$(CC) $(CFLAGS) -pthread -fPIC -fprofile-arcs -ftest-coverage \
+	-o "fftp" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
+
+coverage: 
+	gcov $(C_SRCS)
+
+lcov-report:coverage
+	mkdir lcov-report
+	lcov --capture --directory . --output-file lcov-report/coverage.info
+	genhtml lcov-report/coverage.info --output-directory lcov-report
 
 # Other Targets
 clean:
