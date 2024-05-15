@@ -480,7 +480,6 @@ int list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *
     struct stat		filestats;
     struct tm		ftm_fields;
     time_t			deltatime;
-	int				current_year;
 
     if (strcmp(entry->d_name, ".") == 0)
         return 1;
@@ -491,15 +490,12 @@ int list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *
 
     if ( lstat(text, &filestats) == 0 )
     {
-		deltatime = time(NULL);
-		ftm_fields = *localtime(&deltatime);
-		current_year = ftm_fields.tm_year;
-
         strmode(filestats.st_mode, sacl);
 
         localtime_r(&filestats.st_mtime, &ftm_fields);
+        deltatime = time(NULL) - filestats.st_mtime;
 
-        if (ftm_fields.tm_year == current_year) {
+        if (deltatime <= 180*24*60*60) {
             snprintf(text, sizeof(text), "%s %lu %lu %lu %12llu %s %02u %02u:%02u %s\r\n",
                     sacl, filestats.st_nlink,
                     (unsigned long int)filestats.st_uid,
