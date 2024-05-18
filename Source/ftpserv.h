@@ -125,6 +125,7 @@ typedef struct _FTPCONTEXT {
 
 #define LIST_TYPE_UNIX  0
 #define LIST_TYPE_MLSD  1
+#define LIST_TYPE_NLST  2
 #define STOR_TYPE_RECREATE_TRUNC  0
 #define STOR_TYPE_APPEND  1
 
@@ -153,7 +154,7 @@ extern gnutls_priority_t                    priority_cache;
 extern gnutls_datum_t                       session_keys_storage;
 
 #define FTP_COMMAND(cmdname)    int cmdname(PFTPCONTEXT context, const char* params)
-#define MAX_CMDS                32
+#define MAX_CMDS                33
 extern const char               shortmonths[12][4];
 
 FTP_COMMAND(ftpUSER);
@@ -188,6 +189,7 @@ FTP_COMMAND(ftpPROT);
 FTP_COMMAND(ftpEPSV);
 FTP_COMMAND(ftpHELP);
 FTP_COMMAND(ftpSITE);
+FTP_COMMAND(ftpNLST);
 
 #define success200     "200 Command okay.\r\n"
 #define success200_1   "200 Type set to A.\r\n"

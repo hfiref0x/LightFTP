@@ -21,11 +21,14 @@ static const FTPROUTINE_ENTRY ftpprocs[MAX_CMDS] = {
         {"MKD",  ftpMKD }, {"RMD",  ftpRMD }, {"STOR", ftpSTOR}, {"SYST", ftpSYST},
         {"FEAT", ftpFEAT}, {"APPE", ftpAPPE}, {"RNFR", ftpRNFR}, {"RNTO", ftpRNTO},
         {"OPTS", ftpOPTS}, {"MLSD", ftpMLSD}, {"AUTH", ftpAUTH}, {"PBSZ", ftpPBSZ},
-        {"PROT", ftpPROT}, {"EPSV", ftpEPSV}, {"HELP", ftpHELP}, {"SITE", ftpSITE}
+        {"PROT", ftpPROT}, {"EPSV", ftpEPSV}, {"HELP", ftpHELP}, {"SITE", ftpSITE},
+		{"NLST", ftpNLST}
 };
 
+void *nlst_thread(PTHCONTEXT tctx);
 void *mlsd_thread(PTHCONTEXT tctx);
 void *list_thread(PTHCONTEXT tctx);
+int nlst_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *entry);
 int list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *entry);
 int mlsd_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *entry);
 void *append_thread(PTHCONTEXT tctx);
@@ -493,7 +496,7 @@ int list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *
         deltatime = time(NULL) - filestats.st_mtime;
 
         if (deltatime <= 180*24*60*60) {
-            snprintf(text, sizeof(text), "%s %lu %lu %lu %llu %s %02u %02u:%02u %s\r\n",
+            snprintf(text, sizeof(text), "%s %lu %lu %lu %12llu %s %02u %02u:%02u %s\r\n",
                     sacl, filestats.st_nlink,
                     (unsigned long int)filestats.st_uid,
                     (unsigned long int)filestats.st_gid,
@@ -503,7 +506,7 @@ int list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *
         }
         else
         {
-            snprintf(text, sizeof(text), "%s %lu %lu %lu %llu %s %02u %02u %s\r\n",
+            snprintf(text, sizeof(text), "%s %lu %lu %lu %12llu %s %02u  %02u %s\r\n",
                     sacl, filestats.st_nlink,
                     (unsigned long int)filestats.st_uid,
                     (unsigned long int)filestats.st_gid,
@@ -512,6 +515,30 @@ int list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *
                     ftm_fields.tm_year + 1900, entry->d_name);
         }
 
+    }
+
+    return sendstring_auto(s, session, text);
+}
+
+int nlst_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *entry)
+{
+    char			text[2*PATH_MAX], sacl[12];
+    struct stat		filestats;
+
+    if (strcmp(entry->d_name, ".") == 0)
+        return 1;
+    if (strcmp(entry->d_name, "..") == 0)
+        return 1;
+
+    snprintf(text, sizeof(text), "%s/%s", dirname, entry->d_name);
+
+    if ( lstat(text, &filestats) == 0 )
+    {
+        strmode(filestats.st_mode, sacl);
+		if(sacl[0] == 'd')
+			snprintf(text, sizeof(text), "%s/\r\n", entry->d_name);
+		else
+			snprintf(text, sizeof(text), "%s\r\n", entry->d_name);
     }
 
     return sendstring_auto(s, session, text);
@@ -546,6 +573,8 @@ void *list_thread(PTHCONTEXT tctx)
         while ((entry = readdir(pdir)) != NULL) {
             if (tctx->FnType == LIST_TYPE_MLSD)
                 ret = mlsd_sub(tctx->thFileName, clientsocket, TLS_datasession, entry);
+            else if (tctx->FnType == LIST_TYPE_NLST)
+                ret = nlst_sub(tctx->thFileName, clientsocket, TLS_datasession, entry);
             else
                 ret = list_sub(tctx->thFileName, clientsocket, TLS_datasession, entry);
             if ( (ret == 0) || (context->WorkerThreadAbort != 0 ))
@@ -558,7 +587,12 @@ void *list_thread(PTHCONTEXT tctx)
 
     ftp_shutdown_tls_session(TLS_datasession);
 
-    writelogentry(context, " LIST/MLSD complete", "");
+	if (tctx->FnType == LIST_TYPE_MLSD)
+		writelogentry(context, " MLSD complete", "");
+	else if (tctx->FnType == LIST_TYPE_NLST)
+		writelogentry(context, " NLST complete", "");
+	else
+		writelogentry(context, " LIST complete", "");
 
     if (clientsocket == INVALID_SOCKET) {
         sendstring(context, error451);
@@ -593,6 +627,10 @@ int ftpLIST(PFTPCONTEXT context, const char *params)
     {
         if ((strcmp(params, "-a") == 0) || (strcmp(params, "-l") == 0))
             params = NULL;
+		else if ( params[0] == '-' )
+			if ( (params[1] == 'l') || (params[1] == 'a') ) 
+				if ( params[2] == ' ' )
+					params =  params + 3;
     }
 
     ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
@@ -603,8 +641,49 @@ int ftpLIST(PFTPCONTEXT context, const char *params)
             break;
 
         sendstring(context, interm150);
-        writelogentry(context, " LIST", (char *)params);
+        writelogentry(context, " LIST ", (char *)params);
         worker_thread_start(context, list_thread);
+        return 1;
+    }
+
+    return sendstring(context, error550);
+}
+
+void *nlst_thread(PTHCONTEXT tctx)
+{
+    tctx->FnType = LIST_TYPE_NLST;
+    return list_thread(tctx);
+}
+
+int ftpNLST(PFTPCONTEXT context, const char *params)
+{
+    struct  stat    filestats;
+
+    if (context->Access == FTP_ACCESS_NOT_LOGGED_IN)
+        return sendstring(context, error530);
+    if ((context->WorkerThreadValid == 0) || (context->hFile != -1))
+        return sendstring(context, error550_t);
+
+    if (params != NULL)
+    {
+        if ((strcmp(params, "-a") == 0) || (strcmp(params, "-l") == 0))
+            params = NULL;
+		else if ( params[0] == '-' )
+			if ( (params[1] == 'l') || (params[1] == 'a') ) 
+				if ( params[2] == ' ' )
+					params =  params + 3;
+    }
+
+    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
+
+    while (stat(context->FileName, &filestats) == 0)
+    {
+        if ( !S_ISDIR(filestats.st_mode) )
+            break;
+
+        sendstring(context, interm150);
+        writelogentry(context, " NLST ", (char *)params);
+        worker_thread_start(context, nlst_thread);
         return 1;
     }
 

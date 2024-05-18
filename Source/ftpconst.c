@@ -19,5 +19,5 @@ const char success214[] =
 		"214-The following commands are recognized.\r\n"
 		" ABOR APPE AUTH CDUP CWD  DELE EPSV FEAT HELP LIST MKD MLSD NOOP OPTS\r\n"
 		" PASS PASV PBSZ PORT PROT PWD  QUIT REST RETR RMD RNFR RNTO SITE SIZE\r\n"
-		" STOR SYST TYPE USER\r\n"
+		" STOR SYST TYPE USER NLST\r\n"
 		"214 Help OK.\r\n";
