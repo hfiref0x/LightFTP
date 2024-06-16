@@ -229,13 +229,16 @@ void worker_thread_cleanup(PFTPCONTEXT context)
     int					err;
     void				*retv = NULL;
 
-    if ( context->WorkerThreadValid == 0 ) {
+    while ( context->WorkerThreadValid == 0 ) {
 
         /*
          * trying to stop gracefully
          */
         context->WorkerThreadAbort = 1;
         sleep(2);
+
+        if ( context->WorkerThreadValid == -1 )
+          break;
 
         err = pthread_join(context->WorkerThreadId, &retv);
         if ( err != 0)
@@ -245,6 +248,7 @@ void worker_thread_cleanup(PFTPCONTEXT context)
         }
 
         context->WorkerThreadValid = -1;
+        break;
     }
 
     if ( context->DataSocket != INVALID_SOCKET ) {
