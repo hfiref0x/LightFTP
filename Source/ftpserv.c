@@ -230,12 +230,25 @@ void worker_thread_cleanup(PFTPCONTEXT context)
     void				*retv = NULL;
 
     if ( context->WorkerThreadValid == 0 ) {
-
-        /*
-         * trying to stop gracefully
-         */
         context->WorkerThreadAbort = 1;
-        sleep(2);
+        sleep(1);
+
+        if ( context->DataSocket != INVALID_SOCKET ) {
+          close(context->DataSocket);
+          context->DataSocket = INVALID_SOCKET;
+        }
+
+        if ( context->hFile != -1 ) {
+          close(context->hFile);
+          context->hFile = -1;
+        }
+
+        context->DataIPv4 = 0;
+        context->DataPort = 0;
+        sleep(1);
+
+        if ( context->WorkerThreadValid == -1 )
+          return;
 
         err = pthread_join(context->WorkerThreadId, &retv);
         if ( err != 0)
@@ -246,19 +259,6 @@ void worker_thread_cleanup(PFTPCONTEXT context)
 
         context->WorkerThreadValid = -1;
     }
-
-    if ( context->DataSocket != INVALID_SOCKET ) {
-        close(context->DataSocket);
-        context->DataSocket = INVALID_SOCKET;
-    }
-
-    if ( context->hFile != -1 ) {
-        close(context->hFile);
-        context->hFile = -1;
-    }
-
-    context->DataIPv4 = 0;
-    context->DataPort = 0;
 }
 
 void worker_thread_start(PFTPCONTEXT context, PSTARTROUTINE fn)
