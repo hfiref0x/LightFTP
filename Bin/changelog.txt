@@ -2,6 +2,9 @@
 - Removed
 * Fixed/Changed
 
+Jun 30, 2024, v2.3.1
+* fix for race condition bug in ABRT command
+
 Feb 4, 2023, v2.3
 * fix CVE-2023-24042 (#25) 
 + more statistics added

@@ -3,7 +3,7 @@
 *
 *  Created on: Aug 20, 2016
 *
-*  Modified on: Jan 29, 2023
+*  Modified on: Jun 30, 2024
 *
 *      Author: lightftp
 */
@@ -61,7 +61,7 @@ typedef struct _FTP_CONFIG {
     in_addr_t       LocalIPMask;
 } FTP_CONFIG, *PFTP_CONFIG;
 
-#define FTP_VERSION          "2.3"
+#define FTP_VERSION          "2.3.1"
 #define CONFIG_FILE_NAME     "fftp.conf"
 #define CONFIG_SECTION_NAME  "ftpconfig"
 #define DEFAULT_FTP_PORT     21

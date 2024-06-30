@@ -144,4 +144,4 @@ Changelog available at Bin/changelog.txt
 
 # Authors
 
-(c) 2007 - 2022 LightFTP Project
+(c) 2007 - 2024 LightFTP Project
