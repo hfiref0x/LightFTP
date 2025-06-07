@@ -64,8 +64,8 @@ void ftp_shutdown_tls_session(gnutls_session_t session)
 
 int ftp_init_tls_session(gnutls_session_t *session, SOCKET s, int send_status)
 {
-    int					ret;
-    gnutls_session_t	nsession = NULL;
+    int ret;
+    gnutls_session_t nsession = NULL;
 
     if (session == NULL)
         return 0;
@@ -73,39 +73,37 @@ int ftp_init_tls_session(gnutls_session_t *session, SOCKET s, int send_status)
     if (gnutls_init(&nsession, GNUTLS_SERVER | GNUTLS_NO_SIGNAL) < 0)
         return 0;
 
-    while (nsession)
-    {
-        if (gnutls_priority_set(nsession, priority_cache) < 0)
-            break;
-
-        if (gnutls_credentials_set(nsession, GNUTLS_CRD_CERTIFICATE, x509_cred) < 0)
-            break;
-
-        gnutls_certificate_server_set_request(nsession, GNUTLS_CERT_IGNORE);
-        gnutls_handshake_set_timeout(nsession, GNUTLS_DEFAULT_HANDSHAKE_TIMEOUT);
-        gnutls_transport_set_int2(nsession, s, s);
-        gnutls_session_ticket_enable_server(nsession, &session_keys_storage);
+    if (gnutls_priority_set(nsession, priority_cache) < 0 ||
+        gnutls_credentials_set(nsession, GNUTLS_CRD_CERTIFICATE, x509_cred) < 0) {
+        gnutls_deinit(nsession);
 
         if (send_status)
-            sendstring_plaintext(s, success234);
-
-        do {
-            ret = gnutls_handshake(nsession);
-        } while ((ret < 0) && (gnutls_error_is_fatal(ret) == 0));
-
-        if (ret < 0)
-            break;
-
-        *session = nsession;
-        return 1;
+            sendstring_plaintext(s, error500_auth);
+        return 0;
     }
 
-    gnutls_deinit(nsession);
+    gnutls_certificate_server_set_request(nsession, GNUTLS_CERT_IGNORE);
+    gnutls_handshake_set_timeout(nsession, GNUTLS_DEFAULT_HANDSHAKE_TIMEOUT);
+    gnutls_transport_set_int2(nsession, s, s);
+    gnutls_session_ticket_enable_server(nsession, &session_keys_storage);
 
     if (send_status)
-        sendstring_plaintext(s, error500_auth);
+        sendstring_plaintext(s, success234);
 
-    return 0;
+    do {
+        ret = gnutls_handshake(nsession);
+    } while (ret < 0 && !gnutls_error_is_fatal(ret));
+
+    if (ret < 0) {
+        gnutls_deinit(nsession);
+
+        if (send_status)
+            sendstring_plaintext(s, error500_auth);
+        return 0;
+    }
+
+    *session = nsession;
+    return 1;
 }
 
 SOCKET create_datasocket(PFTPCONTEXT context)
@@ -228,10 +226,13 @@ void worker_thread_cleanup(PFTPCONTEXT context)
 {
     int					err;
     void				*retv = NULL;
+    struct timespec     timeout;
 
     if ( context->WorkerThreadValid == 0 ) {
         context->WorkerThreadAbort = 1;
-        sleep(1);
+
+        clock_gettime(CLOCK_REALTIME, &timeout);
+        timeout.tv_sec += 2;
 
         if ( context->DataSocket != INVALID_SOCKET ) {
           close(context->DataSocket);
@@ -245,16 +246,16 @@ void worker_thread_cleanup(PFTPCONTEXT context)
 
         context->DataIPv4 = 0;
         context->DataPort = 0;
-        sleep(1);
 
         if ( context->WorkerThreadValid == -1 )
           return;
 
-        err = pthread_join(context->WorkerThreadId, &retv);
-        if ( err != 0)
-        {
-            writelogentry(context, "Enter cancel", "");
-            pthread_cancel(context->WorkerThreadId);
+        err = pthread_timedjoin_np(context->WorkerThreadId, &retv, &timeout);
+        if (err != 0) {
+            writelogentry(context, "Thread didn't exit, canceling", "");
+            if (pthread_cancel(context->WorkerThreadId) != 0) {
+                writelogentry(context, "Thread cancel failed", "");
+            }
         }
 
         context->WorkerThreadValid = -1;
@@ -272,7 +273,7 @@ void worker_thread_start(PFTPCONTEXT context, PSTARTROUTINE fn)
     tctx = x_malloc(sizeof(THCONTEXT));
     tctx->context = context;
     tctx->FnType = 0;
-    strcpy(tctx->thFileName, context->FileName);
+    strncpy(tctx->thFileName, context->FileName, sizeof(tctx->thFileName) - 1);
 
     context->WorkerThreadValid = pthread_create(&tid, NULL, (void * (*)(void *))fn, tctx);
     if ( context->WorkerThreadValid == 0 )
@@ -288,17 +289,20 @@ void worker_thread_start(PFTPCONTEXT context, PSTARTROUTINE fn)
 
 int ftpUSER(PFTPCONTEXT context, const char *params)
 {
+    char text[PATH_MAX];
+
     if ( params == NULL )
         return sendstring(context, error501);
 
     context->Access = FTP_ACCESS_NOT_LOGGED_IN;
 
     writelogentry(context, " USER: ", (char *)params);
-    snprintf(context->UserName, sizeof(context->UserName), "331 User %s OK. Password required\r\n", params);
-    sendstring(context, context->UserName);
+    snprintf(text, sizeof(text), "331 User %s OK. Password required\r\n", params);
+    sendstring(context, text);
 
     /* Save login name to UserName for the next PASS command */
-    strcpy(context->UserName, params);
+    strncpy(context->UserName, params, sizeof(context->UserName) - 1);
+    context->UserName[sizeof(context->UserName) - 1] = '\0';
     return 1;
 }
 
@@ -679,7 +683,7 @@ void *retr_thread(PTHCONTEXT tctx)
     TLS_datasession = NULL;
     clientsocket = INVALID_SOCKET;
     clock_gettime(CLOCK_MONOTONIC, &t);
-    lt0 = t.tv_sec*1e9 + t.tv_nsec;
+    lt0 = t.tv_sec*1000000000ll + t.tv_nsec;
     dtx = t.tv_sec+30;
 
     buffer = x_malloc(TRANSMIT_BUFFER_SIZE);
@@ -736,7 +740,7 @@ void *retr_thread(PTHCONTEXT tctx)
         /* calculating performance */
 
         clock_gettime(CLOCK_MONOTONIC, &t);
-        lt1 = t.tv_sec*1e9 + t.tv_nsec;
+        lt1 = t.tv_sec*1000000000ll + t.tv_nsec;
         dtx = lt1 - lt0;
 
         context->Stats.DataTx += sz_total;
@@ -952,7 +956,7 @@ int ftpPASV(PFTPCONTEXT context, const char *params)
 
 int ftpPASS(PFTPCONTEXT context, const char *params)
 {
-    char	temptext[256];
+    volatile char temptext[PATH_MAX];
 
     if ( params == NULL )
         return sendstring(context, error501);
@@ -1105,7 +1109,7 @@ void *stor_thread(PTHCONTEXT tctx)
     TLS_datasession = NULL;
     clientsocket = INVALID_SOCKET;
     clock_gettime(CLOCK_MONOTONIC, &t);
-    lt0 = t.tv_sec*1e9 + t.tv_nsec;
+    lt0 = t.tv_sec*1000000000ll + t.tv_nsec;
     dtx = t.tv_sec+30;
 
     buffer = x_malloc(TRANSMIT_BUFFER_SIZE);
@@ -1154,7 +1158,7 @@ void *stor_thread(PTHCONTEXT tctx)
         /* calculating performance */
 
         clock_gettime(CLOCK_MONOTONIC, &t);
-        lt1 = t.tv_sec*1e9 + t.tv_nsec;
+        lt1 = t.tv_sec*1000000000ll + t.tv_nsec;
         dtx = lt1 - lt0;
 
         context->Stats.DataRx += sz_total;
@@ -1544,6 +1548,10 @@ int recvcmd(PFTPCONTEXT context, char *buffer, size_t buffer_size)
 
         buffer_size -= l;
         p += l;
+        if (p >= (ssize_t)buffer_size) {
+            buffer[p-1] = 0;
+            return 0;
+        }
 
         if ( p >= 2 )
             if ( (buffer[p-2] == '\r') && (buffer[p-1] == '\n') )
@@ -1553,6 +1561,7 @@ int recvcmd(PFTPCONTEXT context, char *buffer, size_t buffer_size)
             }
     }
 
+    buffer[buffer_size-1] = 0;
     return 0;
 }
 
