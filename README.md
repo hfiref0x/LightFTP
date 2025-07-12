@@ -98,7 +98,7 @@ All features enabled.
 Note for "pswd" field:
 `pswd=*` means "any password matches".
 
-Example of configuration file can be found in the `Source` directory as `fftp.conf`.
+Example of configuration file can be found in the `src` directory as `fftp.conf`.
 
 # Build 
 
@@ -129,10 +129,10 @@ In case you want to use git and git is not installed, install it first:
 Next, use the following:
 
       git clone https://github.com/hfiref0x/lightftp
-      cd lightftp/Source/Release
+      cd lightftp/src/Release
       make
       
-The resulting binary is `fftp`. Next, set up the ftp config. Example config file is `Bin/fftp.conf`. Set port, accounts, path to log file (optionally, if you need it), path to certificates if you want to use them, etc.
+The resulting binary is `fftp`. Next, set up the ftp config. Example config file is `data/fftp.conf`. Set port, accounts, path to log file (optionally, if you need it), path to certificates if you want to use them, etc.
 
 # Old Windows Version
 
@@ -140,7 +140,7 @@ Since 2.2, the old unmaintained Windows version has been moved to a separate arc
 
 # Changelog
 
-Changelog available at `Bin/changelog.txt`.
+Changelog available at `data/changelog.txt`.
 
 # Authors
 
