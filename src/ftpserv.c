@@ -1013,7 +1013,15 @@ int ftpREST(PFTPCONTEXT context, const char *params)
 
     if ( params == NULL )
         return sendstring(context, error501);
-
+    
+    for (const char *p = params; *p != '\0'; p++)
+    {
+        if (!isprint((unsigned char)*p) || *p < 33 || *p > 126)
+        {
+            return sendstring(context, error501); 
+        }
+    }
+    
     context->RestPoint = strtoull(params, NULL, 10);
     snprintf(context->FileName, sizeof(context->FileName),
             "350 REST supported. Ready to resume at byte offset %llu\r\n",
