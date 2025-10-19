@@ -294,6 +294,10 @@ int ftpUSER(PFTPCONTEXT context, const char *params)
     if ( params == NULL )
         return sendstring(context, error501);
 
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
+
     context->Access = FTP_ACCESS_NOT_LOGGED_IN;
 
     writelogentry(context, " USER: ", (char *)params);
@@ -340,6 +344,10 @@ int ftpTYPE(PFTPCONTEXT context, const char *params)
 
     if (params == NULL)
         return sendstring(context, error501);
+    
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
 
     switch (*params)
     {
@@ -960,6 +968,10 @@ int ftpPASS(PFTPCONTEXT context, const char *params)
 
     if ( params == NULL )
         return sendstring(context, error501);
+    
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
 
     memset(temptext, 0, sizeof(temptext));
 
