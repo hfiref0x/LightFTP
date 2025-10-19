@@ -78,6 +78,7 @@ typedef struct _FTP_CONFIG {
  * FULL = "admin" in config. All access features enabled.
  */
 
+#define FTP_ACCESS_NOT_USERNAME    -1
 #define FTP_ACCESS_NOT_LOGGED_IN    0
 #define FTP_ACCESS_READONLY         1
 #define FTP_ACCESS_CREATENEW        2
@@ -212,7 +213,7 @@ extern const char success214[];
 #define error501       "501 Syntax error in parameters or arguments.\r\n"
 #define error503       "503 Invalid sequence of commands (AUTH TLS required prior to authentication).\r\n"
 #define error504       "504 Command not implemented for that parameter.\r\n"
-#define error530       "530 Please login with USER and PASS.\r\n"
+#define error530       "530 Please login with USER and PASS: use USER immediately followed by PASS.\r\n"
 #define error530_b     "530 This account is disabled.\r\n"
 #define error530_r     "530 Invalid user name or password.\r\n"
 #define error550       "550 File or directory unavailable.\r\n"

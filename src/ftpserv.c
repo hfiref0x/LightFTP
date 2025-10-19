@@ -331,7 +331,10 @@ int ftpNOOP(PFTPCONTEXT context, const char *params)
 int ftpPWD(PFTPCONTEXT context, const char *params)
 {
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
 
     snprintf(context->FileName, sizeof(context->FileName), "257 \"%s\" is a current directory.\r\n", context->CurrentDir);
     return sendstring(context, context->FileName);
@@ -340,7 +343,10 @@ int ftpPWD(PFTPCONTEXT context, const char *params)
 int ftpTYPE(PFTPCONTEXT context, const char *params)
 {
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
 
     if (params == NULL)
         return sendstring(context, error501);
@@ -371,7 +377,10 @@ int ftpPORT(PFTPCONTEXT context, const char *params)
     char		*p = (char *)params;
 
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
 
     if ( params == NULL )
         return sendstring(context, error501);
@@ -597,7 +606,10 @@ int ftpLIST(PFTPCONTEXT context, const char *params)
     struct  stat    filestats;
 
     if (context->Access == FTP_ACCESS_NOT_LOGGED_IN)
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
     if ((context->WorkerThreadValid == 0) || (context->hFile != -1))
         return sendstring(context, error550_t);
 
@@ -631,7 +643,10 @@ int ftpLIST(PFTPCONTEXT context, const char *params)
 int ftpCDUP(PFTPCONTEXT context, const char *params)
 {
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
 
     if ( strcmp(context->CurrentDir, "/") == 0 )
         return sendstring(context, success250);
@@ -647,7 +662,10 @@ int ftpCWD(PFTPCONTEXT context, const char *params)
     struct	stat	filestats;
 
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
 
     if ( params == NULL )
         return sendstring(context, error501);
@@ -797,7 +815,10 @@ int ftpRETR(PFTPCONTEXT context, const char *params)
     struct	stat	filestats;
 
     if (context->Access == FTP_ACCESS_NOT_LOGGED_IN)
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
     if ( params == NULL )
         return sendstring(context, error501);
     if ((context->WorkerThreadValid == 0) || (context->hFile != -1))
@@ -822,7 +843,10 @@ int ftpRETR(PFTPCONTEXT context, const char *params)
 int ftpABOR(PFTPCONTEXT context, const char *params)
 {
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
 
     writelogentry(context, " ABORT command", NULL);
     worker_thread_cleanup(context);
@@ -832,7 +856,10 @@ int ftpABOR(PFTPCONTEXT context, const char *params)
 int ftpDELE(PFTPCONTEXT context, const char *params)
 {
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
     if ( context->Access < FTP_ACCESS_FULL )
         return sendstring(context, error550_r);
     if ( params == NULL )
@@ -862,6 +889,7 @@ int pasv(PFTPCONTEXT context)
     {
         if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
         {
+            context->Access = FTP_ACCESS_NOT_USERNAME;
             sendstring(context, error530);
             break;
         }
@@ -965,6 +993,8 @@ int ftpPASV(PFTPCONTEXT context, const char *params)
 int ftpPASS(PFTPCONTEXT context, const char *params)
 {
     volatile char temptext[PATH_MAX];
+    if (context->Access == FTP_ACCESS_NOT_USERNAME)
+        return sendstring(context, error530);
 
     if ( params == NULL )
         return sendstring(context, error501);
@@ -1021,7 +1051,10 @@ int ftpPASS(PFTPCONTEXT context, const char *params)
 int ftpREST(PFTPCONTEXT context, const char *params)
 {
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
 
     if ( params == NULL )
         return sendstring(context, error501);
@@ -1039,7 +1072,10 @@ int ftpSIZE(PFTPCONTEXT context, const char *params)
     struct stat		filestats;
 
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
     if ( params == NULL )
         return sendstring(context, error501);
 
@@ -1060,7 +1096,10 @@ int ftpSIZE(PFTPCONTEXT context, const char *params)
 int ftpMKD(PFTPCONTEXT context, const char *params)
 {
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
     if ( context->Access < FTP_ACCESS_CREATENEW )
         return sendstring(context, error550_r);
     if ( params == NULL )
@@ -1081,7 +1120,10 @@ int ftpMKD(PFTPCONTEXT context, const char *params)
 int ftpRMD(PFTPCONTEXT context, const char *params)
 {
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
     if ( context->Access < FTP_ACCESS_FULL )
         return sendstring(context, error550_r);
     if ( params == NULL )
@@ -1219,7 +1261,10 @@ int ftpSTOR(PFTPCONTEXT context, const char *params)
     struct  stat    filestats;
 
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
     if ( context->Access < FTP_ACCESS_CREATENEW )
         return sendstring(context, error550_r);
     if ( params == NULL )
@@ -1265,7 +1310,10 @@ int parseCHMOD(PFTPCONTEXT context, const char* params)
     mode_t flags = 0;
 
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
     if ( context->Access < FTP_ACCESS_FULL )
         return sendstring(context, error550_r);
 
@@ -1321,7 +1369,10 @@ int ftpAPPE(PFTPCONTEXT context, const char *params)
     struct	stat	filestats;
 
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
     if ( context->Access < FTP_ACCESS_FULL )
         return sendstring(context, error550_r);
     if ( params == NULL )
@@ -1352,7 +1403,10 @@ int ftpRNFR(PFTPCONTEXT context, const char *params)
     struct stat		filestats;
 
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
     if ( context->Access < FTP_ACCESS_FULL )
         return sendstring(context, error550_r);
     if ( params == NULL )
@@ -1374,7 +1428,10 @@ int ftpRNFR(PFTPCONTEXT context, const char *params)
 int ftpRNTO(PFTPCONTEXT context, const char *params)
 {
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
     if ( context->Access < FTP_ACCESS_FULL )
         return sendstring(context, error550_r);
     if ( params == NULL )
@@ -1433,7 +1490,10 @@ int ftpPBSZ (PFTPCONTEXT context, const char *params)
 int ftpPROT (PFTPCONTEXT context, const char *params)
 {
     if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
 
     if ( params == NULL )
         return sendstring(context, error501);
@@ -1518,7 +1578,10 @@ int ftpMLSD(PFTPCONTEXT context, const char *params)
     struct  stat    filestats;
 
     if (context->Access == FTP_ACCESS_NOT_LOGGED_IN)
+    {
+        context->Access = FTP_ACCESS_NOT_USERNAME;
         return sendstring(context, error530);
+    }
     if ((context->WorkerThreadValid == 0) || (context->hFile != -1))
         return sendstring(context, error550_t);
 
