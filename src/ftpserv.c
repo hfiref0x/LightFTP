@@ -255,6 +255,13 @@ void worker_thread_cleanup(PFTPCONTEXT context)
             writelogentry(context, "Thread didn't exit, canceling", "");
             if (pthread_cancel(context->WorkerThreadId) != 0) {
                 writelogentry(context, "Thread cancel failed", "");
+            } else {
+                clock_gettime(CLOCK_REALTIME, &timeout);
+                timeout.tv_sec += 2;
+            	err = pthread_timedjoin_np(context->WorkerThreadId, &retv, &timeout);
+                if (err != 0) {
+                	writelogentry(context, "Thread didn't exit after cancel", "");
+                }
             }
         }
 
