@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Nov 4, 2025
+ *  Modified on: Jul 25, 2025
  *
  *      Author: lightftp
  */
@@ -223,11 +223,12 @@ ssize_t writelogentry(PFTPCONTEXT context, const char *logtext1, const char *log
 
 void worker_thread_cleanup(PFTPCONTEXT context)
 {
-    int					err;
-    void				*retv = NULL;
+	pthread_t			tid;
     struct timespec     timeout = {0};
 
-    if ( context->WorkerThreadValid == 0 ) {
+    tid = context->WorkerThreadId;
+    if ( context->WorkerThreadValid == 0 )
+    {
         context->WorkerThreadAbort = 1;
 
         timeout.tv_sec = 0;
@@ -250,7 +251,7 @@ void worker_thread_cleanup(PFTPCONTEXT context)
         if ( context->WorkerThreadValid == -1 )
           return;
 
-        if (pthread_cancel(context->WorkerThreadId) != 0)
+        if (pthread_cancel(tid) != 0)
         {
             writelogentry(context, "Thread cancel failed", "");
         }
@@ -1794,7 +1795,7 @@ void *ftpmain(void *p)
         }
 
         snprintf(text, sizeof(text),
-                "MAIN LOOP stats: g_threads=%i, g_cfg.MaxUsers=%lu, g_client_sockets_created=%llu, g_client_sockets_closed=%llu\r\n",
+                "MAIN LOOP stats: g_threads=%i, g_cfg.MaxUsers=%llu, g_client_sockets_created=%llu, g_client_sockets_closed=%llu\r\n",
                 g_threads, g_cfg.MaxUsers, g_client_sockets_created, g_client_sockets_closed);
 
         writelogentry(NULL, text, "");

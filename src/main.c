@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Nov 4, 2025
+ *  Modified on: Jul 25, 2025
  *
  *      Author: lightftp
  */
@@ -77,11 +77,11 @@ int main(int argc, char *argv[])
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "keepalive", textbuf, bufsize))
 			g_cfg.EnableKeepalive = strtoul(textbuf, NULL, 10);
 
-		g_cfg.FileOpenFlags = 0;
+		g_cfg.FileOpenFlags = O_NOFOLLOW;
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "follow_symlinks", textbuf, bufsize))
         {
-            if (strtoul(textbuf, NULL, 10) == 0)
-                g_cfg.FileOpenFlags |= O_NOFOLLOW;
+            if (strtoul(textbuf, NULL, 10) != 0)
+                g_cfg.FileOpenFlags &= ~O_NOFOLLOW;
         }
 
 		g_cfg.PasvPortBase = 1024;
@@ -135,7 +135,7 @@ int main(int argc, char *argv[])
 		printf("External ipv4   : %s\r\n", inet_ntoa(na));
 
 		printf("Port            : %u\r\n", g_cfg.Port);
-		printf("Max users       : %lu\r\n", g_cfg.MaxUsers);
+		printf("Max users       : %llu\r\n", g_cfg.MaxUsers);
 		printf("PASV port range : %u..%u\r\n", g_cfg.PasvPortBase, g_cfg.PasvPortMax);
 
 		printf("\r\n TYPE q or Ctrl+C to terminate >\r\n");
