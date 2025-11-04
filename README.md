@@ -74,6 +74,10 @@ Password to decrypt the private key.
 Send keepalive packets (some NATs may require this).
 Default: 0 (disabled)
 
+      follow_symlinks
+
+Allow following symbolic links. When enabled, the server will follow symbolic links and treat them as regular files/directories.
+Default: 0 (disabled)
 
 # User Sections
 
@@ -105,8 +109,9 @@ Example of configuration file can be found in the `src` directory as `fftp.conf`
 * LightFTP comes with full source code, written in C.
 * In order to build from source in Windows, you need a Cygwin environment (https://www.cygwin.com/) with GNU make, gnutls, and pthreads packages installed. Also, make sure the Cygwin bin folder is set in the system-wide PATH variable (e.g. `PATH=SomeOfYourOtherValues;C:\Cygwin\bin;C:\Cygwin\usr\bin`). To build the executable, run the `make` command in the `Release` directory.
 * In order to build from source in Linux, you need the GCC C compiler. Run the `make` command in the `Release` directory. LightFTP uses GnuTLS, make sure you have headers (`libgnutls-dev` or `gnutls-dev`) installed.
+* For debug builds with AddressSanitizer, run `make` in the `Debug` directory. ASAN helps detect memory errors and undefined behavior during development.
 
-### Example for Linux Mint 19.3/Ubuntu 18.04
+### Example for Linux Mint/Ubuntu
 
 You need GCC and Make installed. If they are not installed, you can install them as part of the build-essential package:
 
@@ -130,7 +135,16 @@ Next, use the following:
 
       git clone https://github.com/hfiref0x/lightftp
       cd lightftp/src/Release
-      make
+      make fftp
+
+For debug build with AddressSanitizer:
+
+      cd lightftp/src/Debug
+      make fftp
+
+To run with ASAN enabled:    	    	
+		      
+      ASAN_OPTIONS=abort_on_error=1,strict_string_checks=1,detect_stack_use_after_return=1,handle_segv=1,allow_user_segv_handler=1 ./LightFTP/src/Release/fftp ./LightFTP/data/fftp.conf
       
 The resulting binary is `fftp`. Next, set up the ftp config. Example config file is `data/fftp.conf`. Set port, accounts, path to log file (optionally, if you need it), path to certificates if you want to use them, etc.
 
