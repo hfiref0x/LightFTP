@@ -32,7 +32,7 @@ OBJS += \
 %.o: ../%.c subdir.mk
 	@echo 'Building file: $<'
 	@echo 'Invoking: GCC C Compiler'
-	gcc -std=c99 -D_GNU_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS -O0 -g3 -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -pedantic -Wall -Wextra -c -fmessage-length=0 -v -fPIC -fstack-protector-all -Wformat=2 -Wformat-security -Wstrict-overflow -fPIE -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" -o "$@" "$<"
+	$(CC) $(CFLAGS) -std=c99 -D_GNU_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS -O0 -g3 -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -pedantic -Wall -Wextra -c -fmessage-length=0 -v -fPIC -fstack-protector-all -Wformat=2 -Wformat-security -Wstrict-overflow -fPIE -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" -o "$@" "$<"
 	@echo 'Finished building: $<'
 	@echo ' '
 
