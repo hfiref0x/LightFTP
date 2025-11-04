@@ -2,15 +2,19 @@
  * fspathtools.c
  *
  *  Created on: Nov 18, 2020
+ *
+ *  Modified on: Nov 4, 2025
+ *
  *      Author: lightftp
  */
 
 #include <limits.h>
+#include <linux/limits.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
-#include "x_malloc.h"
+#include "inc/x_malloc.h"
 
 char *filepath(char *s)
 {

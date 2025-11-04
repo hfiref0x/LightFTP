@@ -1,16 +1,16 @@
 /*
-* main.c
-*
-*  Created on: Aug 20, 2016
-*
-*  Modified on: Jan 4, 2022
-*
-*      Author: lightftp
-*/
+ * main.c
+ *
+ *  Created on: Aug 20, 2016
+ *
+ *  Modified on: Nov 4, 2025
+ *
+ *      Author: lightftp
+ */
 
-#include "ftpserv.h"
-#include "cfgparse.h"
-#include "x_malloc.h"
+#include "inc/ftpserv.h"
+#include "inc/cfgparse.h"
+#include "inc/x_malloc.h"
 
 FTP_CONFIG   g_cfg;
 int          g_log = -1;
@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
 
 		g_cfg.Port = DEFAULT_FTP_PORT;
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "port", textbuf, bufsize))
-			g_cfg.Port = strtoul(textbuf, NULL, 10);
+			g_cfg.Port = (in_port_t)strtoul(textbuf, NULL, 10);
 
 		g_cfg.MaxUsers = 1;
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "maxusers", textbuf, bufsize))
@@ -77,13 +77,20 @@ int main(int argc, char *argv[])
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "keepalive", textbuf, bufsize))
 			g_cfg.EnableKeepalive = strtoul(textbuf, NULL, 10);
 
+		g_cfg.FileOpenFlags = 0;
+		if (config_parse(cfg, CONFIG_SECTION_NAME, "follow_symlinks", textbuf, bufsize))
+        {
+            if (strtoul(textbuf, NULL, 10) == 0)
+                g_cfg.FileOpenFlags |= O_NOFOLLOW;
+        }
+
 		g_cfg.PasvPortBase = 1024;
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "minport", textbuf, bufsize))
-			g_cfg.PasvPortBase = strtoul(textbuf, NULL, 10);
+			g_cfg.PasvPortBase = (in_port_t)strtoul(textbuf, NULL, 10);
 
 		g_cfg.PasvPortMax = 65535;
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "maxport", textbuf, bufsize))
-			g_cfg.PasvPortMax = strtoul(textbuf, NULL, 10);
+			g_cfg.PasvPortMax = (in_port_t)strtoul(textbuf, NULL, 10);
 
 		config_parse(cfg, CONFIG_SECTION_NAME, "CATrustFile", CAFILE, sizeof(CAFILE));
 		config_parse(cfg, CONFIG_SECTION_NAME, "ServerCertificate", CERTFILE, sizeof(CERTFILE));
@@ -128,7 +135,7 @@ int main(int argc, char *argv[])
 		printf("External ipv4   : %s\r\n", inet_ntoa(na));
 
 		printf("Port            : %u\r\n", g_cfg.Port);
-		printf("Max users       : %u\r\n", g_cfg.MaxUsers);
+		printf("Max users       : %lu\r\n", g_cfg.MaxUsers);
 		printf("PASV port range : %u..%u\r\n", g_cfg.PasvPortBase, g_cfg.PasvPortMax);
 
 		printf("\r\n TYPE q or Ctrl+C to terminate >\r\n");

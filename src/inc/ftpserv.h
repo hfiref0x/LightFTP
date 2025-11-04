@@ -1,15 +1,15 @@
 /*
-* ftpserv.h
-*
-*  Created on: Aug 20, 2016
-*
-*  Modified on: Jun 30, 2024
-*
-*      Author: lightftp
-*/
+ * ftpserv.h
+ *
+ *  Created on: Aug 20, 2016
+ *
+ *  Modified on: Nov 4, 2025
+ *
+ *      Author: lightftp
+ */
 
 #ifndef FTPSERV_H_
-#define FTPSERV_H_
+#define FTPSERV_H_ 1
 
 #if !defined _GNU_SOURCE
 #define _GNU_SOURCE
@@ -23,7 +23,9 @@
 #define _LARGEFILE64_SOURCE
 #endif
 
+#include <time.h>
 #include <limits.h>
+#include <linux/limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,7 +33,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <time.h>
 #include <ctype.h>
 #include <fcntl.h>
 #include <dirent.h>
@@ -51,8 +52,9 @@
 
 typedef struct _FTP_CONFIG {
     char*           ConfigFile;
-    unsigned int    MaxUsers;
-    unsigned int    EnableKeepalive;
+    uint64_t        MaxUsers;
+    uint64_t        EnableKeepalive;
+    int             FileOpenFlags;
     in_port_t       Port;
     in_port_t       PasvPortBase;
     in_port_t       PasvPortMax;
@@ -61,7 +63,7 @@ typedef struct _FTP_CONFIG {
     in_addr_t       LocalIPMask;
 } FTP_CONFIG, *PFTP_CONFIG;
 
-#define FTP_VERSION          "2.3.1"
+#define FTP_VERSION          "2.4"
 #define CONFIG_FILE_NAME     "fftp.conf"
 #define CONFIG_SECTION_NAME  "ftpconfig"
 #define DEFAULT_FTP_PORT     21
@@ -93,7 +95,7 @@ typedef struct _SESSION_STATS {
 } SESSION_STATS, *PSESSION_STATS;
 
 typedef struct _FTPCONTEXT {
-    pthread_mutex_t     MTLock;
+    int                 Busy;
     SOCKET              ControlSocket;
     SOCKET              DataSocket;
     pthread_t           WorkerThreadId;
@@ -110,7 +112,7 @@ typedef struct _FTPCONTEXT {
     int                 hFile;
     int                 Mode;
     int                 Access;
-    int                 SessionID;
+    unsigned int        SessionID;
     int                 DataProtectionLevel;
     off_t               RestPoint;
     uint64_t            BlockSize;
@@ -134,7 +136,7 @@ typedef struct _THCONTEXT {
     int             FnType;
 } THCONTEXT, *PTHCONTEXT;
 
-typedef int (*FTPROUTINE) (PFTPCONTEXT context, const char* params);
+typedef ssize_t (*FTPROUTINE) (PFTPCONTEXT context, const char* params);
 
 typedef struct _FTPROUTINE_ENTRY {
     const char* Name;
@@ -152,7 +154,7 @@ extern gnutls_certificate_credentials_t     x509_cred;
 extern gnutls_priority_t                    priority_cache;
 extern gnutls_datum_t                       session_keys_storage;
 
-#define FTP_COMMAND(cmdname)    int cmdname(PFTPCONTEXT context, const char* params)
+#define FTP_COMMAND(cmdname)    ssize_t cmdname(PFTPCONTEXT context, const char* params)
 #define MAX_CMDS                32
 extern const char               shortmonths[12][4];
 
@@ -206,6 +208,7 @@ extern const char success214[];
 #define success257     "257 Directory created.\r\n"
 #define error425       "425 Can not open data connection.\r\n"
 #define error426       "426 Connection closed; transfer aborted.\r\n"
+#define error450       "450 Requested file action not taken.\r\n"
 #define error451       "451 Requested action aborted. Local error in processing.\r\n"
 #define error500       "500 Syntax error, command unrecognized.\r\n"
 #define error500_auth  "500 AUTH unsuccessful.\r\n"

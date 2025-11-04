@@ -1,9 +1,11 @@
 /*
  * ftpconst.c
  *
- *  Created  : May 15, 2020
- *  Modified : Jun 30, 2024
- *  Author   : lightftp
+ *  Created on : May 15, 2020
+ *
+ *  Modified on: Jul 25, 2025
+ *
+ *      Author: lightftp
  */
 
 const char shortmonths[12][4] = {
