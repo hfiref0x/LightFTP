@@ -3,7 +3,7 @@
  *
  *  Created on: Feb 3, 2018
  *
- *  Modified on: Jul 25, 2025
+ *  Modified on: Nov 08, 2025
  *
  *      Author: lightftp
  */
@@ -13,6 +13,16 @@
 
 #include <stdlib.h>
 
-#define x_malloc(size) ({ void *ptr = malloc(size); if (ptr) {memset(ptr, 0, size);} else {abort();} ptr; })
+#define x_malloc(size) x_malloc_impl(size)
+
+static inline void *x_malloc_impl(size_t size) {
+    void *ptr = malloc(size);
+    if (ptr) {
+        memset(ptr, 0, size);
+    } else {
+        abort();
+    }
+    return ptr;
+}
 
 #endif /* X_MALLOC_H_ */

@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Jul 25, 2025
+ *  Modified on: Nov 08, 2025
  *
  *      Author: lightftp
  */
@@ -12,7 +12,7 @@
 #include "inc/cfgparse.h"
 #include "inc/x_malloc.h"
 
-FTP_CONFIG   g_cfg;
+ftp_config   g_cfg;
 int          g_log = -1;
 
 static char  CAFILE[PATH_MAX], CERTFILE[PATH_MAX], KEYFILE[PATH_MAX], KEYFILE_PASS[256];
@@ -51,46 +51,46 @@ int main(int argc, char *argv[])
 	{
 		textbuf = x_malloc(bufsize);
 
-		g_cfg.ConfigFile = cfg;
+		g_cfg.config_file = cfg;
 
-		g_cfg.BindToInterface = inet_addr("127.0.0.1");
+		g_cfg.bind_to_interface = inet_addr("127.0.0.1");
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "interface", textbuf, bufsize))
-			g_cfg.BindToInterface = inet_addr(textbuf);
+			g_cfg.bind_to_interface = inet_addr(textbuf);
 
-		g_cfg.ExternalInterface = inet_addr("0.0.0.0");
+		g_cfg.external_interface = inet_addr("0.0.0.0");
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "external_ip", textbuf, bufsize))
-			g_cfg.ExternalInterface = inet_addr(textbuf);
+			g_cfg.external_interface = inet_addr(textbuf);
 
-		g_cfg.LocalIPMask = inet_addr("255.255.255.0");
+		g_cfg.local_ip_mask = inet_addr("255.255.255.0");
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "local_mask", textbuf, bufsize))
-			g_cfg.LocalIPMask = inet_addr(textbuf);
+			g_cfg.local_ip_mask = inet_addr(textbuf);
 
-		g_cfg.Port = DEFAULT_FTP_PORT;
+		g_cfg.port = DEFAULT_FTP_PORT;
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "port", textbuf, bufsize))
-			g_cfg.Port = (in_port_t)strtoul(textbuf, NULL, 10);
+			g_cfg.port = (in_port_t)strtoul(textbuf, NULL, 10);
 
-		g_cfg.MaxUsers = 1;
+		g_cfg.max_users = 1;
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "maxusers", textbuf, bufsize))
-			g_cfg.MaxUsers = strtoul(textbuf, NULL, 10);
+			g_cfg.max_users = strtoul(textbuf, NULL, 10);
 
-		g_cfg.EnableKeepalive = 0;
+		g_cfg.enable_keepalive = 0;
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "keepalive", textbuf, bufsize))
-			g_cfg.EnableKeepalive = strtoul(textbuf, NULL, 10);
+			g_cfg.enable_keepalive = strtoul(textbuf, NULL, 10);
 
-		g_cfg.FileOpenFlags = O_NOFOLLOW;
+		g_cfg.file_open_flags = O_NOFOLLOW;
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "follow_symlinks", textbuf, bufsize))
         {
             if (strtoul(textbuf, NULL, 10) != 0)
-                g_cfg.FileOpenFlags &= ~O_NOFOLLOW;
+                g_cfg.file_open_flags &= ~O_NOFOLLOW;
         }
 
-		g_cfg.PasvPortBase = 1024;
+		g_cfg.pasv_port_base = 1024;
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "minport", textbuf, bufsize))
-			g_cfg.PasvPortBase = (in_port_t)strtoul(textbuf, NULL, 10);
+			g_cfg.pasv_port_base = (in_port_t)strtoul(textbuf, NULL, 10);
 
-		g_cfg.PasvPortMax = 65535;
+		g_cfg.pasv_port_max = 65535;
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "maxport", textbuf, bufsize))
-			g_cfg.PasvPortMax = (in_port_t)strtoul(textbuf, NULL, 10);
+			g_cfg.pasv_port_max = (in_port_t)strtoul(textbuf, NULL, 10);
 
 		config_parse(cfg, CONFIG_SECTION_NAME, "CATrustFile", CAFILE, sizeof(CAFILE));
 		config_parse(cfg, CONFIG_SECTION_NAME, "ServerCertificate", CERTFILE, sizeof(CERTFILE));
@@ -127,16 +127,16 @@ int main(int argc, char *argv[])
 		else
 			printf("Config file     : %s/%s\r\n", textbuf, CONFIG_FILE_NAME);
 
-		na.s_addr = g_cfg.BindToInterface;
+		na.s_addr = g_cfg.bind_to_interface;
 		printf("Interface ipv4  : %s\r\n", inet_ntoa(na));
-		na.s_addr = g_cfg.LocalIPMask;
+		na.s_addr = g_cfg.local_ip_mask;
 		printf("Interface mask  : %s\r\n", inet_ntoa(na));
-		na.s_addr = g_cfg.ExternalInterface;
+		na.s_addr = g_cfg.external_interface;
 		printf("External ipv4   : %s\r\n", inet_ntoa(na));
 
-		printf("Port            : %u\r\n", g_cfg.Port);
-		printf("Max users       : %llu\r\n", g_cfg.MaxUsers);
-		printf("PASV port range : %u..%u\r\n", g_cfg.PasvPortBase, g_cfg.PasvPortMax);
+		printf("Port            : %u\r\n", g_cfg.port);
+		printf("Max users       : %" PRIu64 "\r\n", g_cfg.max_users);
+		printf("PASV port range : %u..%u\r\n", g_cfg.pasv_port_base, g_cfg.pasv_port_max);
 
 		printf("\r\n TYPE q or Ctrl+C to terminate >\r\n");
 
