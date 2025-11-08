@@ -1,0 +1,39 @@
+{
+    "files.associations": {
+        "ftpserv.h": "c",
+        "pthread.h": "c"
+    },
+    // Hide build output directories and common binary/object files from the Explorer
+    "files.exclude": {
+        "**/src/Debug/**": true,
+        "**/src/Release/**": true,
+        "**/*.o": true,
+        "**/*.obj": true,
+        "**/*.so": true,
+        "**/*.dylib": true,
+        "**/*.a": true,
+        "**/*.lib": true,
+        "**/*.exe": true,
+        "**/*.out": true,
+        "**/fftp": true
+    },
+    // Also exclude them from search results
+    "search.exclude": {
+        "**/src/Debug/**": true,
+        "**/src/Release/**": true,
+        "**/*.o": true,
+        "**/*.obj": true,
+        "**/*.so": true,
+        "**/*.dylib": true,
+        "**/*.a": true,
+        "**/*.lib": true,
+        "**/*.exe": true,
+        "**/*.out": true,
+        "**/fftp": true
+    },
+    // Avoid filesystem watchers on build output
+    "files.watcherExclude": {
+        "**/src/Debug/**": true,
+        "**/src/Release/**": true
+    }
+}

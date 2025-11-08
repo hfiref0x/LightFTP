@@ -1,0 +1,147 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Debug",
+            "type": "shell",
+            "command": "make",
+            "args": ["fftp"],
+            "options": {
+                "cwd": "${workspaceFolder}/src/Debug"
+            },
+            "group": "build",
+            "problemMatcher": ["$gcc"],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Build Release",
+            "type": "shell",
+            "command": "make",
+            "args": ["fftp"],
+            "options": {
+                "cwd": "${workspaceFolder}/src/Release"
+            },
+            "group": "build",
+            "problemMatcher": ["$gcc"],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Build Release (ASAN)",
+            "type": "shell",
+            "command": "make",
+            "args": ["fftp"],
+            "options": {
+                "cwd": "${workspaceFolder}/src/Release",
+                "env": {
+                    "CFLAGS": "-g -O1 -fsanitize=address -fno-omit-frame-pointer",
+                    "CXXFLAGS": "-g -O1 -fsanitize=address -fno-omit-frame-pointer",
+                    "LDFLAGS": "-fsanitize=address"
+                }
+            },
+            "group": "build",
+            "problemMatcher": ["$gcc"],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Clean Debug",
+            "type": "shell",
+            "command": "make",
+            "args": ["clean"],
+            "options": {
+                "cwd": "${workspaceFolder}/src/Debug"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Clean Release",
+            "type": "shell",
+            "command": "make",
+            "args": ["clean"],
+            "options": {
+                "cwd": "${workspaceFolder}/src/Release"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Rebuild Debug",
+            "dependsOrder": "sequence",
+            "dependsOn": ["Clean Debug", "Build Debug"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Rebuild Release",
+            "dependsOrder": "sequence",
+            "dependsOn": ["Clean Release", "Build Release"],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Rebuild Release (ASAN)",
+            "dependsOrder": "sequence",
+            "dependsOn": ["Clean Release", "Build Release (ASAN)"],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Debug (ASAN)",
+            "type": "shell",
+            "command": "./fftp",
+            "args": [
+                "${workspaceFolder}/data/fftp.conf"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/src/Debug",
+                "env": {
+                    "ASAN_OPTIONS": "detect_leaks=1,abort_on_error=1,strict_string_checks=1,detect_stack_use_after_return=1,handle_segv=1,allow_user_segv_handler=1"
+                }
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Release (ASAN)",
+            "type": "shell",
+            "command": "./fftp",
+            "args": [
+                "${workspaceFolder}/data/fftp.conf"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/src/Release",
+                "env": {
+                    "ASAN_OPTIONS": "detect_leaks=1,abort_on_error=1,strict_string_checks=1,detect_stack_use_after_return=1,handle_segv=1,allow_user_segv_handler=1"
+                }
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

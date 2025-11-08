@@ -1,0 +1,152 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug LightFTP (Debug Build)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/Debug/fftp",
+            "args": [
+                "${workspaceFolder}/data/fftp.conf"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/src/Debug",
+            "environment": [
+                {
+                    "name": "ASAN_OPTIONS",
+                    "value": "detect_leaks=0,abort_on_error=1,strict_string_checks=1,detect_stack_use_after_return=1,handle_segv=1,allow_user_segv_handler=1"
+                }
+            ],
+            "externalConsole": true,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "Build Debug",
+            "miDebuggerPath": "/usr/bin/gdb"
+        },
+        {
+            "name": "Debug LightFTP (Debug Build, Rebuild)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/Debug/fftp",
+            "args": [
+                "${workspaceFolder}/data/fftp.conf"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/src/Debug",
+            "environment": [
+                {
+                    "name": "ASAN_OPTIONS",
+                    "value": "detect_leaks=0,abort_on_error=1,strict_string_checks=1,detect_stack_use_after_return=1,handle_segv=1,allow_user_segv_handler=1"
+                }
+            ],
+            "externalConsole": true,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "Rebuild Debug",
+            "miDebuggerPath": "/usr/bin/gdb"
+        },
+        {
+            "name": "Debug LightFTP (Release Build)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/Release/fftp",
+            "args": [
+                "${workspaceFolder}/data/fftp.conf"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/src/Release",
+            "environment": [
+                {
+                    "name": "ASAN_OPTIONS",
+                    "value": "detect_leaks=0,abort_on_error=1,strict_string_checks=1,detect_stack_use_after_return=1,handle_segv=1,allow_user_segv_handler=1"
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "Build Release",
+            "miDebuggerPath": "/usr/bin/gdb"
+        },
+        {
+            "name": "Debug LightFTP (Release Build, ASAN)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/Release/fftp",
+            "args": [
+                "${workspaceFolder}/data/fftp.conf"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/src/Release",
+            "environment": [
+                {
+                    "name": "ASAN_OPTIONS",
+                    "value": "detect_leaks=0,abort_on_error=1,strict_string_checks=1,detect_stack_use_after_return=1,handle_segv=1,allow_user_segv_handler=1"
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "Build Release (ASAN)",
+            "miDebuggerPath": "/usr/bin/gdb"
+        },
+        {
+            "name": "Attach to LightFTP Process",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/src/Debug/fftp",
+            "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}
