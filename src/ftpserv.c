@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Jul 25, 2025
+ *  Modified on: Nov 08, 2025
  *
  *      Author: lightftp
  */
@@ -14,7 +14,7 @@
 #include "inc/fspathtools.h"
 #include "inc/sha256sum.h"
 
-static const FTPROUTINE_ENTRY ftpprocs[MAX_CMDS] = {
+static const ftproutine_entry ftpprocs[MAX_CMDS] = {
         {"USER", ftpUSER}, {"QUIT", ftpQUIT}, {"NOOP", ftpNOOP}, {"PWD",  ftpPWD },
         {"TYPE", ftpTYPE}, {"PORT", ftpPORT}, {"LIST", ftpLIST}, {"CDUP", ftpCDUP},
         {"CWD",  ftpCWD }, {"RETR", ftpRETR}, {"ABOR", ftpABOR}, {"DELE", ftpDELE},
@@ -25,13 +25,13 @@ static const FTPROUTINE_ENTRY ftpprocs[MAX_CMDS] = {
         {"PROT", ftpPROT}, {"EPSV", ftpEPSV}, {"HELP", ftpHELP}, {"SITE", ftpSITE}
 };
 
-void *mlsd_thread(PTHCONTEXT tctx);
-void *list_thread(PTHCONTEXT tctx);
+void *mlsd_thread(pthcontext tctx);
+void *list_thread(pthcontext tctx);
 ssize_t list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *entry);
 ssize_t mlsd_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *entry);
-void *append_thread(PTHCONTEXT tctx);
-void *stor_thread(PTHCONTEXT tctx);
-void *retr_thread(PTHCONTEXT tctx);
+void *append_thread(pthcontext tctx);
+void *stor_thread(pthcontext tctx);
+void *retr_thread(pthcontext tctx);
 
 /*
  * FTP_PASSCMD_INDEX
@@ -39,12 +39,17 @@ void *retr_thread(PTHCONTEXT tctx);
  */
 #define FTP_PASSCMD_INDEX   13
 
+#define WORKER_CLEANUP_TIMEOUT_NS   500000000
+#define KEEPALIVE_IDLE_SEC          16
+#define KEEPALIVE_INTERVAL_SEC      16
+#define KEEPALIVE_PROBE_COUNT       8
+
 unsigned int g_newid = 0, g_threads = 0;
 unsigned long long int g_client_sockets_created = 0, g_client_sockets_closed = 0;
 
 static void cleanup_handler(void *arg)
 {
-    PTHCONTEXT tctx = (PTHCONTEXT)arg;
+    pthcontext tctx = (pthcontext)arg;
     free(tctx);
 }
 
@@ -105,58 +110,58 @@ int ftp_init_tls_session(gnutls_session_t *session, SOCKET s, int send_status)
     return 1;
 }
 
-SOCKET create_datasocket(PFTPCONTEXT context)
+SOCKET create_datasocket(pftp_context context)
 {
-    SOCKET				clientsocket = INVALID_SOCKET;
+    SOCKET				client_socket = INVALID_SOCKET;
     struct sockaddr_in	laddr;
     socklen_t			asz;
 
     memset(&laddr, 0, sizeof(laddr));
 
-    switch ( context->Mode ) {
+    switch ( context->mode ) {
     case MODE_NORMAL:
-        clientsocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        context->DataSocket = clientsocket;
-        if ( clientsocket == INVALID_SOCKET )
+        client_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        context->data_socket = client_socket;
+        if ( client_socket == INVALID_SOCKET )
             return INVALID_SOCKET;
 
         laddr.sin_family = AF_INET;
-        laddr.sin_port = context->DataPort;
-        laddr.sin_addr.s_addr = context->DataIPv4;
-        if ( connect(clientsocket, (const struct sockaddr *)&laddr, sizeof(laddr)) == -1 ) {
-            close(clientsocket);
+        laddr.sin_port = context->data_port;
+        laddr.sin_addr.s_addr = context->data_ipv4;
+        if ( connect(client_socket, (const struct sockaddr *)&laddr, sizeof(laddr)) == -1 ) {
+            close(client_socket);
             return INVALID_SOCKET;
         }
         break;
 
     case MODE_PASSIVE:
         asz = sizeof(laddr);
-        clientsocket = accept(context->DataSocket, (struct sockaddr *)&laddr, &asz);
-        close(context->DataSocket);
-        context->DataSocket = clientsocket;
+        client_socket = accept(context->data_socket, (struct sockaddr *)&laddr, &asz);
+        close(context->data_socket);
+        context->data_socket = client_socket;
 
-        if ( clientsocket == INVALID_SOCKET )
+        if ( client_socket == INVALID_SOCKET )
             return INVALID_SOCKET;
 
-        context->DataIPv4 = 0;
-        context->DataPort = 0;
-        context->Mode = MODE_NORMAL;
+        context->data_ipv4 = 0;
+        context->data_port = 0;
+        context->mode = MODE_NORMAL;
         break;
 
     default:
         return INVALID_SOCKET;
     }
-    return clientsocket;
+    return client_socket;
 }
 
-ssize_t sendstring(PFTPCONTEXT context, const char *Buffer)
+ssize_t sendstring(pftp_context context, const char *Buffer)
 {
     size_t	l = strlen(Buffer);
 
-    if (context->TLS_session == NULL)
-        return (send(context->ControlSocket, Buffer, l, MSG_NOSIGNAL) >= 0);
+    if (context->tls_session == NULL)
+        return (send(context->control_socket, Buffer, l, MSG_NOSIGNAL) >= 0);
     else
-        return (gnutls_record_send(context->TLS_session, Buffer, l) >= 0);
+        return (gnutls_record_send(context->tls_session, Buffer, l) >= 0);
 }
 
 ssize_t sendstring_auto(SOCKET s, gnutls_session_t session, const char *Buffer)
@@ -196,7 +201,7 @@ ssize_t writeconsolestr(const char *Buffer)
     return write(STDOUT_FILENO, Buffer, l);
 }
 
-ssize_t writelogentry(PFTPCONTEXT context, const char *logtext1, const char *logtext2)
+ssize_t writelogentry(pftp_context context, const char *logtext1, const char *logtext2)
 {
     char		text[2*PATH_MAX];
     time_t		itm = time(NULL);
@@ -215,131 +220,130 @@ ssize_t writelogentry(PFTPCONTEXT context, const char *logtext1, const char *log
         snprintf(text, sizeof(text), "%02u-%02u-%u %02u:%02u:%02u S-id=%u : %s%s\r\n",
                 ltm.tm_mday, ltm.tm_mon+1, ltm.tm_year+1900,
                 ltm.tm_hour, ltm.tm_min, ltm.tm_sec,
-                context->SessionID, logtext1, logtext2);
+                context->session_id, logtext1, logtext2);
     }
 
     return writeconsolestr(text);
 }
 
-void worker_thread_cleanup(PFTPCONTEXT context)
+void worker_thread_cleanup(pftp_context context)
 {
 	pthread_t			tid;
     struct timespec     timeout = {0};
 
-    tid = context->WorkerThreadId;
-    if ( context->WorkerThreadValid == 0 )
+    tid = context->worker_thread_id;
+    if ( context->worker_thread_valid == 0 )
     {
-        context->WorkerThreadAbort = 1;
+        context->worker_thread_abort = 1;
 
         timeout.tv_sec = 0;
-        timeout.tv_nsec = 500000000;
+        timeout.tv_nsec = WORKER_CLEANUP_TIMEOUT_NS;
 
-        if ( context->DataSocket != INVALID_SOCKET ) {
-          close(context->DataSocket);
-          context->DataSocket = INVALID_SOCKET;
+        if ( context->data_socket != INVALID_SOCKET ) {
+          close(context->data_socket);
+          context->data_socket = INVALID_SOCKET;
         }
 
-        if ( context->hFile != -1 ) {
-          close(context->hFile);
-          context->hFile = -1;
+        if ( context->file_fd != -1 ) {
+          close(context->file_fd);
+          context->file_fd = -1;
         }
 
-        context->DataIPv4 = 0;
-        context->DataPort = 0;
+        context->data_ipv4 = 0;
+        context->data_port = 0;
 
         nanosleep(&timeout, NULL);
-        if ( context->WorkerThreadValid == -1 )
+        if ( context->worker_thread_valid == -1 )
           return;
 
         if (pthread_cancel(tid) != 0)
         {
             writelogentry(context, "Thread cancel failed", "");
         }
-        context->WorkerThreadValid = -1;
+        context->worker_thread_valid = -1;
     }
 }
 
-void worker_thread_start(PFTPCONTEXT context, PSTARTROUTINE fn)
+void worker_thread_start(pftp_context context, pstartroutine fn)
 {
     pthread_t       tid;
-    PTHCONTEXT      tctx;
+    pthcontext      tctx;
 
-    context->WorkerThreadAbort = 0;
+    context->worker_thread_abort = 0;
 
-    if (__sync_val_compare_and_swap(&context->Busy, 0, 1) != 0)
+    if (__sync_val_compare_and_swap(&context->busy, 0, 1) != 0)
     {
          sendstring(context, error450);
          return;
     }
 
-    tctx = x_malloc(sizeof(THCONTEXT));
+    tctx = x_malloc(sizeof(thcontext));
     tctx->context = context;
-    tctx->FnType = 0;
-    snprintf(tctx->thFileName, sizeof(tctx->thFileName), "%s", context->FileName);
+    tctx->fn_type = 0;
+    snprintf(tctx->th_file_name, sizeof(tctx->th_file_name), "%s", context->file_name);
 
-    context->WorkerThreadValid = pthread_create(&tid, NULL, (void * (*)(void *))fn, tctx);
-    if ( context->WorkerThreadValid == 0 )
-        context->WorkerThreadId = tid;
+    context->worker_thread_valid = pthread_create(&tid, NULL, (void * (*)(void *))fn, tctx);
+    if ( context->worker_thread_valid == 0 )
+        context->worker_thread_id = tid;
     else
     {
         free(tctx);
         sendstring(context, error451);
-        context->Busy = __sync_sub_and_fetch(&context->Busy, 1);
+        context->busy = __sync_sub_and_fetch(&context->busy, 1);
     }
 }
 
-ssize_t ftpUSER(PFTPCONTEXT context, const char *params)
+ssize_t ftpUSER(pftp_context context, const char *params)
 {
     char text[PATH_MAX];
 
     if ( params == NULL )
         return (int)sendstring(context, error501);
 
-    context->Access = FTP_ACCESS_NOT_LOGGED_IN;
+    context->access = FTP_ACCESS_NOT_LOGGED_IN;
 
     writelogentry(context, " USER: ", (char *)params);
     snprintf(text, sizeof(text), "331 User %s OK. Password required\r\n", params);
     sendstring(context, text);
 
     /* Save login name to UserName for the next PASS command */
-    memset(context->UserName, 0, sizeof(context->UserName));
-    snprintf(context->UserName, sizeof(context->UserName), "%s", params);
+    memset(context->user_name, 0, sizeof(context->user_name));
+    snprintf(context->user_name, sizeof(context->user_name), "%s", params);
     return 1;
 }
 
-ssize_t ftpQUIT(PFTPCONTEXT context, const char *params)
+ssize_t ftpQUIT(pftp_context context, const char *params)
 {
     __attribute__((__unused__)) const char *un = params;
     char text[PATH_MAX];
 
     writelogentry(context, " QUIT", "");
     snprintf(text, sizeof(text), "221 %s\r\n", GOODBYE_MSG);
-    /* sendstring(context, success221); */
     sendstring(context, text);
 
     /* return 0 to break command processing loop */
     return 0;
 }
 
-ssize_t ftpNOOP(PFTPCONTEXT context, const char *params)
+ssize_t ftpNOOP(pftp_context context, const char *params)
 {
     __attribute__((__unused__)) const char *un = params;
     return sendstring(context, success200);
 }
 
-ssize_t ftpPWD(PFTPCONTEXT context, const char *params)
+ssize_t ftpPWD(pftp_context context, const char *params)
 {
     __attribute__((__unused__)) const char *un = params;
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
 
-    snprintf(context->FileName, sizeof(context->FileName), "257 \"%s\" is a current directory.\r\n", context->CurrentDir);
-    return sendstring(context, context->FileName);
+    snprintf(context->file_name, sizeof(context->file_name), "257 \"%s\" is a current directory.\r\n", context->current_dir);
+    return sendstring(context, context->file_name);
 }
 
-ssize_t ftpTYPE(PFTPCONTEXT context, const char *params)
+ssize_t ftpTYPE(pftp_context context, const char *params)
 {
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
 
     if (params == NULL)
@@ -360,20 +364,20 @@ ssize_t ftpTYPE(PFTPCONTEXT context, const char *params)
     }
 }
 
-ssize_t ftpPORT(PFTPCONTEXT context, const char *params)
+ssize_t ftpPORT(pftp_context context, const char *params)
 {
     int			c;
-    in_addr_t	DataIP = 0, DataPort = 0;
+    in_addr_t	data_ipv4 = 0, data_port = 0;
     char		*p = (char *)params;
 
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
 
     if ( params == NULL )
         return sendstring(context, error501);
 
     for (c = 0; c < 4; ++c) {
-        DataIP += ((in_addr_t)strtoul(p, NULL, 10)) << c*8;
+        data_ipv4 += ((in_addr_t)strtoul(p, NULL, 10)) << c*8;
         while ( (*p >= '0') && (*p <= '9') )
             ++p;
         if ( *p == 0 )
@@ -382,7 +386,7 @@ ssize_t ftpPORT(PFTPCONTEXT context, const char *params)
     }
 
     for (c = 0; c < 2; ++c) {
-        DataPort += ((in_addr_t)strtoul(p, NULL, 10)) << c*8;
+        data_port += ((in_addr_t)strtoul(p, NULL, 10)) << c*8;
         while ( (*p >= '0') && (*p <= '9') )
             ++p;
         if ( *p == 0 )
@@ -390,12 +394,12 @@ ssize_t ftpPORT(PFTPCONTEXT context, const char *params)
         ++p;
     }
 
-    if ( DataIP != context->ClientIPv4 )
+    if ( data_ipv4 != context->client_ipv4 )
         return sendstring(context, error501);
 
-    context->DataIPv4 = DataIP;
-    context->DataPort = (in_port_t)DataPort;
-    context->Mode = MODE_NORMAL;
+    context->data_ipv4 = data_ipv4;
+    context->data_port = (in_port_t)data_port;
+    context->mode = MODE_NORMAL;
 
     return sendstring(context, success200);
 }
@@ -525,42 +529,44 @@ ssize_t list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dire
     return sendstring_auto(s, session, text);
 }
 
-void *list_thread(PTHCONTEXT tctx)
+void *list_thread(pthcontext tctx)
 {
-    volatile SOCKET     clientsocket;
+    volatile SOCKET     client_socket;
     gnutls_session_t	TLS_datasession;
     int					fd;
     ssize_t             ret;
     DIR					*pdir;
     struct dirent		*entry;
-    PFTPCONTEXT         context = tctx->context;
+    pftp_context        context = tctx->context;
 
     pthread_detach(pthread_self());
     pthread_cleanup_push(cleanup_handler, tctx);
     ret = 0;
     TLS_datasession = NULL;
 
-    clientsocket = create_datasocket(context);
-    while (clientsocket != INVALID_SOCKET)
+    client_socket = create_datasocket(context);
+    while (client_socket != INVALID_SOCKET)
     {
-        if (context->TLS_session != NULL)
-            if (!ftp_init_tls_session(&TLS_datasession, clientsocket, 0))
+        if (context->tls_session != NULL)
+            if (!ftp_init_tls_session(&TLS_datasession, client_socket, 0))
                 break;
         
-        fd = open(tctx->thFileName, O_DIRECTORY | O_RDONLY | g_cfg.FileOpenFlags);
+        fd = open(tctx->th_file_name, O_DIRECTORY | O_RDONLY | g_cfg.file_open_flags);
         if (fd == -1)
             break;
-        pdir = fdopendir(fd);
 
-        if (pdir == NULL)
+        pdir = fdopendir(fd);
+        if (pdir == NULL) {
+            close(fd);
             break;
+        }
 
         while ((entry = readdir(pdir)) != NULL) {
-            if (tctx->FnType == LIST_TYPE_MLSD)
-                ret = mlsd_sub(tctx->thFileName, clientsocket, TLS_datasession, entry);
+            if (tctx->fn_type == LIST_TYPE_MLSD)
+                ret = mlsd_sub(tctx->th_file_name, client_socket, TLS_datasession, entry);
             else
-                ret = list_sub(tctx->thFileName, clientsocket, TLS_datasession, entry);
-            if ( (ret == 0) || (context->WorkerThreadAbort != 0 ))
+                ret = list_sub(tctx->th_file_name, client_socket, TLS_datasession, entry);
+            if ( (ret == 0) || (context->worker_thread_abort != 0 ))
                 break;
         }
 /* fd will be closed automatically */
@@ -572,33 +578,33 @@ void *list_thread(PTHCONTEXT tctx)
 
     writelogentry(context, " LIST/MLSD complete", "");
 
-    if (clientsocket == INVALID_SOCKET) {
+    if (client_socket == INVALID_SOCKET) {
         sendstring(context, error451);
     }
     else {
-        if ((context->WorkerThreadAbort == 0) && (ret != 0))
+        if ((context->worker_thread_abort == 0) && (ret != 0))
             sendstring(context, success226);
         else
             sendstring(context, error426);
 
-        close(clientsocket);
-        context->DataSocket = INVALID_SOCKET;
+        close(client_socket);
+        context->data_socket = INVALID_SOCKET;
     }
 
-    context->WorkerThreadValid = -1;
+    context->worker_thread_valid = -1;
     pthread_cleanup_pop(0);
-    context->Busy = __sync_sub_and_fetch(&context->Busy, 1);
+    context->busy = __sync_sub_and_fetch(&context->busy, 1);
     free(tctx);
     return NULL;
 }
 
-ssize_t ftpLIST(PFTPCONTEXT context, const char *params)
+ssize_t ftpLIST(pftp_context context, const char *params)
 {
     struct  stat    filestats;
 
-    if (context->Access == FTP_ACCESS_NOT_LOGGED_IN)
+    if (context->access == FTP_ACCESS_NOT_LOGGED_IN)
         return sendstring(context, error530);
-    if ((context->WorkerThreadValid == 0) || (context->hFile != -1))
+    if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
         return sendstring(context, error550_t);
 
     if (params != NULL)
@@ -607,9 +613,9 @@ ssize_t ftpLIST(PFTPCONTEXT context, const char *params)
             params = NULL;
     }
 
-    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
+    ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
 
-    while (stat(context->FileName, &filestats) == 0)
+    while (stat(context->file_name, &filestats) == 0)
     {
         if ( !S_ISDIR(filestats.st_mode) )
             break;
@@ -628,51 +634,51 @@ ssize_t ftpLIST(PFTPCONTEXT context, const char *params)
  * Return value: pointer to a terminating null character at the end of path
  */
 
-ssize_t ftpCDUP(PFTPCONTEXT context, const char *params)
+ssize_t ftpCDUP(pftp_context context, const char *params)
 {
     __attribute__((__unused__)) const char *un = params;
 
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
 
-    if ( strcmp(context->CurrentDir, "/") == 0 )
+    if ( strcmp(context->current_dir, "/") == 0 )
         return sendstring(context, success250);
 
-    filepath(context->CurrentDir);
+    filepath(context->current_dir);
 
     writelogentry(context, " CDUP", "");
     return sendstring(context, success250);
 }
 
-ssize_t ftpCWD(PFTPCONTEXT context, const char *params)
+ssize_t ftpCWD(pftp_context context, const char *params)
 {
     struct	stat	filestats;
 
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
 
     if ( params == NULL )
         return sendstring(context, error501);
 
-    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
+    ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
 
-    if ( stat(context->FileName, &filestats) == 0 )
+    if ( stat(context->file_name, &filestats) == 0 )
         if ( S_ISDIR(filestats.st_mode) )
         {
-            ftp_effective_path("/", context->CurrentDir, params, sizeof(context->FileName), context->FileName);
-            memset(context->CurrentDir, 0, sizeof(context->CurrentDir));
-            snprintf(context->CurrentDir, sizeof(context->CurrentDir), "%s", context->FileName);
-            writelogentry(context, " CWD: ", context->CurrentDir);
+            ftp_effective_path("/", context->current_dir, params, sizeof(context->file_name), context->file_name);
+            memset(context->current_dir, 0, sizeof(context->current_dir));
+            snprintf(context->current_dir, sizeof(context->current_dir), "%s", context->file_name);
+            writelogentry(context, " CWD: ", context->current_dir);
             return sendstring(context, success250);
         }
 
     return sendstring(context, error550);
 }
 
-void *retr_thread(PTHCONTEXT tctx)
+void *retr_thread(pthcontext tctx)
 {
-    volatile SOCKET		clientsocket;
-    int					sent_ok, f;
+    volatile SOCKET		client_socket;
+    int					sent_ok, file_fd;
     off_t				offset;
     ssize_t				sz, sz_total;
     size_t				buffer_size;
@@ -680,17 +686,17 @@ void *retr_thread(PTHCONTEXT tctx)
     struct timespec		t;
     signed long long	lt0, lt1, dtx;
     gnutls_session_t	TLS_datasession;
-    PFTPCONTEXT         context = tctx->context;
+    pftp_context        context = tctx->context;
 
     pthread_detach(pthread_self());
     pthread_cleanup_push(cleanup_handler, tctx);
 
-    f = -1;
+    file_fd = -1;
     sent_ok = 0;
     sz_total = 0;
     buffer = NULL;
     TLS_datasession = NULL;
-    clientsocket = INVALID_SOCKET;
+    client_socket = INVALID_SOCKET;
     clock_gettime(CLOCK_MONOTONIC, &t);
     lt0 = t.tv_sec*1000000000ll + t.tv_nsec;
     dtx = t.tv_sec+30;
@@ -698,13 +704,13 @@ void *retr_thread(PTHCONTEXT tctx)
     buffer = x_malloc(TRANSMIT_BUFFER_SIZE);
     while (buffer != NULL)
     {
-        clientsocket = create_datasocket(context);
-        if (clientsocket == INVALID_SOCKET)
+        client_socket = create_datasocket(context);
+        if (client_socket == INVALID_SOCKET)
             break;
 
-        if (context->TLS_session != NULL)
+        if (context->tls_session != NULL)
         {
-            if (!ftp_init_tls_session(&TLS_datasession, clientsocket, 0))
+            if (!ftp_init_tls_session(&TLS_datasession, client_socket, 0))
                 break;
 
             buffer_size = gnutls_record_get_max_size(TLS_datasession);
@@ -714,18 +720,18 @@ void *retr_thread(PTHCONTEXT tctx)
         else
             buffer_size = TRANSMIT_BUFFER_SIZE;
 
-        f = open(tctx->thFileName, O_RDONLY | g_cfg.FileOpenFlags);
-        context->hFile = f;
-        if (f == -1)
+        file_fd = open(tctx->th_file_name, O_RDONLY | g_cfg.file_open_flags);
+        context->file_fd = file_fd;
+        if (file_fd == -1)
             break;
 
-        offset = lseek(f, context->RestPoint, SEEK_SET);
-        if (offset != context->RestPoint)
+        offset = lseek(file_fd, context->rest_point, SEEK_SET);
+        if (offset != context->rest_point)
             break;
 
         sent_ok = 1;
-        while ( context->WorkerThreadAbort == 0 ) {
-            sz = read(f, buffer, buffer_size);
+        while ( context->worker_thread_abort == 0 ) {
+            sz = read(file_fd, buffer, buffer_size);
             if (sz == 0)
                 break;
 
@@ -735,7 +741,7 @@ void *retr_thread(PTHCONTEXT tctx)
                 break;
             }
 
-            if (send_auto(clientsocket, TLS_datasession, buffer, sz) == sz)
+            if (send_auto(client_socket, TLS_datasession, buffer, sz) == sz)
             {
                 sz_total += sz;
             }
@@ -752,20 +758,21 @@ void *retr_thread(PTHCONTEXT tctx)
         lt1 = t.tv_sec*1000000000ll + t.tv_nsec;
         dtx = lt1 - lt0;
 
-        context->Stats.DataTx += (size_t)sz_total;
-        ++context->Stats.FilesTx;
+        context->stats.data_tx += (size_t)sz_total;
+        ++context->stats.files_tx;
 
         snprintf(buffer, buffer_size, " RETR complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
                 sz_total, sz_total/1048576.0f, dtx/1000000000.0f, (1000000000.0f*sz_total)/dtx/1048576.0f);
+
         writelogentry(context, buffer, "");
 
         break;
     }
 
-    if (f != -1)
-        close(f);
+    if (file_fd != -1)
+        close(file_fd);
 
-    context->hFile = -1;
+    context->file_fd = -1;
 
     if (buffer != NULL) {
         free(buffer);
@@ -773,40 +780,40 @@ void *retr_thread(PTHCONTEXT tctx)
 
     ftp_shutdown_tls_session(TLS_datasession);
 
-    if (clientsocket == INVALID_SOCKET) {
+    if (client_socket == INVALID_SOCKET) {
         sendstring(context, error451);
     }
     else {
-        if ((context->WorkerThreadAbort == 0) && (sent_ok != 0))
+        if ((context->worker_thread_abort == 0) && (sent_ok != 0))
             sendstring(context, success226);
         else
             sendstring(context, error426);
 
-        close(clientsocket);
-        context->DataSocket = INVALID_SOCKET;
+        close(client_socket);
+        context->data_socket = INVALID_SOCKET;
     }
 
-    context->WorkerThreadValid = -1;
+    context->worker_thread_valid = -1;
     pthread_cleanup_pop(0);
-    context->Busy = __sync_sub_and_fetch(&context->Busy, 1);
+    context->busy = __sync_sub_and_fetch(&context->busy, 1);
     free(tctx);
     return NULL;
 }
 
-ssize_t ftpRETR(PFTPCONTEXT context, const char *params)
+ssize_t ftpRETR(pftp_context context, const char *params)
 {
     struct	stat	filestats;
 
-    if (context->Access == FTP_ACCESS_NOT_LOGGED_IN)
+    if (context->access == FTP_ACCESS_NOT_LOGGED_IN)
         return sendstring(context, error530);
     if ( params == NULL )
         return sendstring(context, error501);
-    if ((context->WorkerThreadValid == 0) || (context->hFile != -1))
+    if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
         return sendstring(context, error550_t);
 
-    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
+    ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
 
-    while (stat(context->FileName, &filestats) == 0)
+    while (stat(context->file_name, &filestats) == 0)
     {
         if ( !S_ISREG(filestats.st_mode) )
             break;
@@ -820,31 +827,31 @@ ssize_t ftpRETR(PFTPCONTEXT context, const char *params)
     return sendstring(context, error550);
 }
 
-ssize_t ftpABOR(PFTPCONTEXT context, const char *params)
+ssize_t ftpABOR(pftp_context context, const char *params)
 {
     __attribute__((__unused__)) const char *un = params;
 
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
 
     writelogentry(context, " ABORT command", NULL);
     worker_thread_cleanup(context);
-    context->Busy = __sync_val_compare_and_swap(&context->Busy, 1, 0);
+    context->busy = __sync_val_compare_and_swap(&context->busy, 1, 0);
     return sendstring(context, success226);
 }
 
-ssize_t ftpDELE(PFTPCONTEXT context, const char *params)
+ssize_t ftpDELE(pftp_context context, const char *params)
 {
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
-    if ( context->Access < FTP_ACCESS_FULL )
+    if ( context->access < FTP_ACCESS_FULL )
         return sendstring(context, error550_r);
     if ( params == NULL )
         return sendstring(context, error501);
 
-    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
+    ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
 
-    if ( unlink(context->FileName) == 0 ) {
+    if ( unlink(context->file_name) == 0 ) {
         sendstring(context, success250);
         writelogentry(context, " DELE: ", (char *)params);
     }
@@ -854,9 +861,9 @@ ssize_t ftpDELE(PFTPCONTEXT context, const char *params)
     return 1;
 }
 
-int pasv(PFTPCONTEXT context)
+int pasv(pftp_context context)
 {
-    SOCKET				datasocket;
+    SOCKET				data_socket;
     struct sockaddr_in	laddr;
     int					socketret = -1, result = 0;
     unsigned long		c;
@@ -864,67 +871,67 @@ int pasv(PFTPCONTEXT context)
 
     while (1)
     {
-        if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+        if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         {
             sendstring(context, error530);
             break;
         }
 
-        if ( context->WorkerThreadValid == 0 )
+        if ( context->worker_thread_valid == 0 )
         {
             sendstring(context, error550_t);
             break;
         }
 
-        if ( context->DataSocket != INVALID_SOCKET )
-            close(context->DataSocket);
+        if ( context->data_socket != INVALID_SOCKET )
+            close(context->data_socket);
 
-        context->DataSocket = INVALID_SOCKET;
+        context->data_socket = INVALID_SOCKET;
 
-        datasocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (datasocket == INVALID_SOCKET)
+        data_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (data_socket == INVALID_SOCKET)
         {
             sendstring(context, error451);
             break;
         }
 
-        for (c = g_cfg.PasvPortBase; c <= g_cfg.PasvPortMax; c++) {
+        for (c = g_cfg.pasv_port_base; c <= g_cfg.pasv_port_max; c++) {
             clock_gettime(CLOCK_REALTIME, &rtctime);
             memset(&laddr, 0, sizeof(laddr));
             laddr.sin_family = AF_INET;
-            laddr.sin_port = htons((in_port_t)(g_cfg.PasvPortBase +
-                    (rtctime.tv_nsec % (g_cfg.PasvPortMax-g_cfg.PasvPortBase))));
-            laddr.sin_addr.s_addr = context->ServerIPv4;
-            socketret = bind(datasocket, (struct sockaddr *)&laddr, sizeof(laddr));
+            laddr.sin_port = htons((in_port_t)(g_cfg.pasv_port_base +
+                    (rtctime.tv_nsec % (g_cfg.pasv_port_max-g_cfg.pasv_port_base))));
+            laddr.sin_addr.s_addr = context->server_ipv4;
+            socketret = bind(data_socket, (struct sockaddr *)&laddr, sizeof(laddr));
             if ( socketret == 0 )
                 break;
         }
 
         if ( socketret != 0 ) {
-            close(datasocket);
+            close(data_socket);
             sendstring(context, error451);
             break;
         }
 
-        socketret = listen(datasocket, SOMAXCONN);
+        socketret = listen(data_socket, SOMAXCONN);
         if (socketret != 0) {
-            close(datasocket);
+            close(data_socket);
             sendstring(context, error451);
             break;
         }
 
-        if ((context->ClientIPv4 & g_cfg.LocalIPMask) == (context->ServerIPv4 & g_cfg.LocalIPMask))
+        if ((context->client_ipv4 & g_cfg.local_ip_mask) == (context->server_ipv4 & g_cfg.local_ip_mask))
         {
-            context->DataIPv4 = context->ServerIPv4;
+            context->data_ipv4 = context->server_ipv4;
             writelogentry(context, " local client.", "");
         } else {
-            context->DataIPv4 = g_cfg.ExternalInterface;
+            context->data_ipv4 = g_cfg.external_interface;
             writelogentry(context, " nonlocal client.", "");
         }
 
-        context->DataPort = laddr.sin_port;
-        context->DataSocket = datasocket;
-        context->Mode = MODE_PASSIVE;
+        context->data_port = laddr.sin_port;
+        context->data_socket = data_socket;
+        context->mode = MODE_PASSIVE;
 
         result = 1;
         break;
@@ -933,44 +940,44 @@ int pasv(PFTPCONTEXT context)
     return result;
 }
 
-ssize_t ftpEPSV (PFTPCONTEXT context, const char *params)
+ssize_t ftpEPSV (pftp_context context, const char *params)
 {
 	__attribute__((unused)) const char *un = params;
 
     if (pasv(context) == 0)
         return 1;
 
-    snprintf(context->FileName, sizeof(context->FileName),
+    snprintf(context->file_name, sizeof(context->file_name),
             "229 Entering Extended Passive Mode (|||%u|)\r\n",
-            ntohs(context->DataPort));
+            ntohs(context->data_port));
 
     writelogentry(context, " entering extended passive mode", "");
 
-    return sendstring(context, context->FileName);
+    return sendstring(context, context->file_name);
 }
 
-ssize_t ftpPASV(PFTPCONTEXT context, const char *params)
+ssize_t ftpPASV(pftp_context context, const char *params)
 {
 	__attribute__((unused)) const char *un = params;
 
     if (pasv(context) == 0)
         return 1;
 
-    snprintf(context->FileName, sizeof(context->FileName),
+    snprintf(context->file_name, sizeof(context->file_name),
             "227 Entering Passive Mode (%u,%u,%u,%u,%u,%u).\r\n",
-            context->DataIPv4 & 0xff,
-            (context->DataIPv4 >> 8) & 0xff,
-            (context->DataIPv4 >> 16) & 0xff,
-            (context->DataIPv4 >> 24) & 0xff,
-            context->DataPort & 0xff,
-            (context->DataPort >> 8) & 0xff);
+            context->data_ipv4 & 0xff,
+            (context->data_ipv4 >> 8) & 0xff,
+            (context->data_ipv4 >> 16) & 0xff,
+            (context->data_ipv4 >> 24) & 0xff,
+            context->data_port & 0xff,
+            (context->data_port >> 8) & 0xff);
 
     writelogentry(context, " entering passive mode", "");
 
-    return sendstring(context, context->FileName);
+    return sendstring(context, context->file_name);
 }
 
-ssize_t ftpPASS(PFTPCONTEXT context, const char *params)
+ssize_t ftpPASS(pftp_context context, const char *params)
 {
     char temptext[PATH_MAX];
 
@@ -980,34 +987,34 @@ ssize_t ftpPASS(PFTPCONTEXT context, const char *params)
     memset(temptext, 0, sizeof(temptext));
 
     /*
-     * we have login name saved in context->UserName from USER command
+     * we have login name saved in context->user_name from USER command
      */
-    if (!config_parse(g_cfg.ConfigFile, context->UserName, "pswd", temptext, sizeof(temptext)))
+    if (!config_parse(g_cfg.config_file, context->user_name, "pswd", temptext, sizeof(temptext)))
         return sendstring(context, error530_r);
 
     if ( (strcmp(temptext, params) == 0) || (temptext[0] == '*') )
     {
-        memset(context->RootDir, 0, sizeof(context->RootDir));
+        memset(context->root_dir, 0, sizeof(context->root_dir));
         memset(temptext, 0, sizeof(temptext));
 
-        config_parse(g_cfg.ConfigFile, context->UserName, "root", context->RootDir, sizeof(context->RootDir));
-        config_parse(g_cfg.ConfigFile, context->UserName, "accs", temptext, sizeof(temptext));
+        config_parse(g_cfg.config_file, context->user_name, "root", context->root_dir, sizeof(context->root_dir));
+        config_parse(g_cfg.config_file, context->user_name, "accs", temptext, sizeof(temptext));
 
-        context->Access = FTP_ACCESS_NOT_LOGGED_IN;
+        context->access = FTP_ACCESS_NOT_LOGGED_IN;
         do {
 
             if ( strcasecmp(temptext, "admin") == 0 ) {
-                context->Access = FTP_ACCESS_FULL;
+                context->access = FTP_ACCESS_FULL;
                 break;
             }
 
             if ( strcasecmp(temptext, "upload") == 0 ) {
-                context->Access = FTP_ACCESS_CREATENEW;
+                context->access = FTP_ACCESS_CREATENEW;
                 break;
             }
 
             if ( strcasecmp(temptext, "readonly") == 0 ) {
-                context->Access = FTP_ACCESS_READONLY;
+                context->access = FTP_ACCESS_READONLY;
                 break;
             }
 
@@ -1022,38 +1029,38 @@ ssize_t ftpPASS(PFTPCONTEXT context, const char *params)
     return sendstring(context, success230);
 }
 
-ssize_t ftpREST(PFTPCONTEXT context, const char *params)
+ssize_t ftpREST(pftp_context context, const char *params)
 {
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
 
     if ( params == NULL )
         return sendstring(context, error501);
 
-    context->RestPoint = (off_t)strtoull(params, NULL, 10);
-    snprintf(context->FileName, sizeof(context->FileName),
+    context->rest_point = (off_t)strtoull(params, NULL, 10);
+    snprintf(context->file_name, sizeof(context->file_name),
             "350 REST supported. Ready to resume at byte offset %llu\r\n",
-            (unsigned long long int)context->RestPoint);
+            (unsigned long long int)context->rest_point);
 
-    return sendstring(context, context->FileName);
+    return sendstring(context, context->file_name);
 }
 
-ssize_t ftpSIZE(PFTPCONTEXT context, const char *params)
+ssize_t ftpSIZE(pftp_context context, const char *params)
 {
     struct stat		filestats;
 
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
     if ( params == NULL )
         return sendstring(context, error501);
 
-    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
+    ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
 
-    if ( stat(context->FileName, &filestats) == 0 )
+    if ( stat(context->file_name, &filestats) == 0 )
     {
-        snprintf(context->FileName, sizeof(context->FileName), "213 %llu\r\n",
+        snprintf(context->file_name, sizeof(context->file_name), "213 %llu\r\n",
                 (unsigned long long int)filestats.st_size);
-        sendstring(context, context->FileName);
+        sendstring(context, context->file_name);
     }
     else
         sendstring(context, error550);
@@ -1061,18 +1068,18 @@ ssize_t ftpSIZE(PFTPCONTEXT context, const char *params)
     return 1;
 }
 
-ssize_t ftpMKD(PFTPCONTEXT context, const char *params)
+ssize_t ftpMKD(pftp_context context, const char *params)
 {
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
-    if ( context->Access < FTP_ACCESS_CREATENEW )
+    if ( context->access < FTP_ACCESS_CREATENEW )
         return sendstring(context, error550_r);
     if ( params == NULL )
         return sendstring(context, error501);
 
-    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
+    ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
 
-    if ( mkdir(context->FileName, 0755) == 0 ) {
+    if ( mkdir(context->file_name, 0755) == 0 ) {
         sendstring(context, success257);
         writelogentry(context, " MKD: ", (char *)params);
     }
@@ -1082,18 +1089,18 @@ ssize_t ftpMKD(PFTPCONTEXT context, const char *params)
     return 1;
 }
 
-ssize_t ftpRMD(PFTPCONTEXT context, const char *params)
+ssize_t ftpRMD(pftp_context context, const char *params)
 {
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
-    if ( context->Access < FTP_ACCESS_FULL )
+    if ( context->access < FTP_ACCESS_FULL )
         return sendstring(context, error550_r);
     if ( params == NULL )
         return sendstring(context, error501);
 
-    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
+    ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
 
-    if ( rmdir(context->FileName) == 0 ) {
+    if ( rmdir(context->file_name) == 0 ) {
         sendstring(context, success250);
         writelogentry(context, " DELE: ", (char *)params);
     }
@@ -1103,26 +1110,26 @@ ssize_t ftpRMD(PFTPCONTEXT context, const char *params)
     return 1;
 }
 
-void *stor_thread(PTHCONTEXT tctx)
+void *stor_thread(pthcontext tctx)
 {
-    volatile SOCKET     clientsocket;
-    int					f;
+    volatile SOCKET     client_socket;
+    int					file_fd;
     ssize_t				wsz, sz, sz_total;
     size_t				buffer_size;
     char				*buffer;
     struct timespec		t;
     signed long long	lt0, lt1, dtx;
     gnutls_session_t	TLS_datasession;
-    PFTPCONTEXT         context = tctx->context;
+    pftp_context        context = tctx->context;
 
     pthread_detach(pthread_self());
     pthread_cleanup_push(cleanup_handler, tctx);
 
-    f = -1;
+    file_fd = -1;
     sz_total = 0;
     buffer = NULL;
     TLS_datasession = NULL;
-    clientsocket = INVALID_SOCKET;
+    client_socket = INVALID_SOCKET;
     clock_gettime(CLOCK_MONOTONIC, &t);
     lt0 = t.tv_sec*1000000000ll + t.tv_nsec;
     dtx = t.tv_sec+30;
@@ -1130,13 +1137,13 @@ void *stor_thread(PTHCONTEXT tctx)
     buffer = x_malloc(TRANSMIT_BUFFER_SIZE);
     while (buffer != NULL)
     {
-        clientsocket = create_datasocket(context);
-        if (clientsocket == INVALID_SOCKET)
+        client_socket = create_datasocket(context);
+        if (client_socket == INVALID_SOCKET)
             break;
 
-        if (context->TLS_session != NULL)
+        if (context->tls_session != NULL)
         {
-            if (!ftp_init_tls_session(&TLS_datasession, clientsocket, 0))
+            if (!ftp_init_tls_session(&TLS_datasession, client_socket, 0))
                 break;
 
             buffer_size = gnutls_record_get_max_size(TLS_datasession);
@@ -1146,23 +1153,23 @@ void *stor_thread(PTHCONTEXT tctx)
         else
             buffer_size = TRANSMIT_BUFFER_SIZE;
 
-        if (tctx->FnType == STOR_TYPE_APPEND)
-            f = open(tctx->thFileName, O_RDWR | g_cfg.FileOpenFlags);
+        if (tctx->fn_type == STOR_TYPE_APPEND)
+            file_fd = open(tctx->th_file_name, O_RDWR | g_cfg.file_open_flags);
         else
-            f = open(tctx->thFileName, O_CREAT | O_RDWR | O_TRUNC | g_cfg.FileOpenFlags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+            file_fd = open(tctx->th_file_name, O_CREAT | O_RDWR | O_TRUNC | g_cfg.file_open_flags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 
-        context->hFile = f;
-        if (f == -1)
+        context->file_fd = file_fd;
+        if (file_fd == -1)
             break;
 
-        lseek(f, 0, SEEK_END);
+        lseek(file_fd, 0, SEEK_END);
 
-        while ( context->WorkerThreadAbort == 0 ) {
-            sz = recv_auto(clientsocket, TLS_datasession, buffer, buffer_size);
+        while ( context->worker_thread_abort == 0 ) {
+            sz = recv_auto(client_socket, TLS_datasession, buffer, buffer_size);
             if (sz > 0)
             {
                 sz_total += sz;
-                wsz = write(f, buffer, (size_t)sz);
+                wsz = write(file_fd, buffer, (size_t)sz);
                 if (wsz != sz)
                     break;
             }
@@ -1176,8 +1183,8 @@ void *stor_thread(PTHCONTEXT tctx)
         lt1 = t.tv_sec*1000000000ll + t.tv_nsec;
         dtx = lt1 - lt0;
 
-        context->Stats.DataRx += (size_t)sz_total;
-        ++context->Stats.FilesRx;
+        context->stats.data_rx += (size_t)sz_total;
+        ++context->stats.files_rx;
 
         snprintf(buffer, buffer_size, " STOR/APPEND complete. %zd bytes (%f MBytes) total sent in %f seconds (%f MBytes/s)",
                 sz_total, sz_total/1048576.0f, dtx/1000000000.0f, (1000000000.0f*sz_total)/dtx/1048576.0f);
@@ -1186,10 +1193,10 @@ void *stor_thread(PTHCONTEXT tctx)
         break;
     }
 
-    if (f != -1)
-        close(f);
+    if (file_fd != -1)
+        close(file_fd);
 
-    context->hFile = -1;
+    context->file_fd = -1;
 
     if (buffer != NULL) {
         free(buffer);
@@ -1197,45 +1204,45 @@ void *stor_thread(PTHCONTEXT tctx)
 
     ftp_shutdown_tls_session(TLS_datasession);
 
-    if (clientsocket == INVALID_SOCKET) {
+    if (client_socket == INVALID_SOCKET) {
         sendstring(context, error451);
     }
     else {
-        if (context->WorkerThreadAbort == 0)
+        if (context->worker_thread_abort == 0)
             sendstring(context, success226);
         else
             sendstring(context, error426);
 
-        close(clientsocket);
-        context->DataSocket = INVALID_SOCKET;
+        close(client_socket);
+        context->data_socket = INVALID_SOCKET;
     }
 
-    context->WorkerThreadValid = -1;
+    context->worker_thread_valid = -1;
     pthread_cleanup_pop(0);
-    context->Busy = __sync_sub_and_fetch(&context->Busy, 1);
+    context->busy = __sync_sub_and_fetch(&context->busy, 1);
     free(tctx);
     return NULL;
 }
 
-ssize_t ftpSTOR(PFTPCONTEXT context, const char *params)
+ssize_t ftpSTOR(pftp_context context, const char *params)
 {
     struct  stat    filestats;
 
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
-    if ( context->Access < FTP_ACCESS_CREATENEW )
+    if ( context->access < FTP_ACCESS_CREATENEW )
         return sendstring(context, error550_r);
     if ( params == NULL )
         return sendstring(context, error501);
-    if ((context->WorkerThreadValid == 0) || (context->hFile != -1))
+    if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
         return sendstring(context, error550_t);
 
-    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
+    ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
 
     /* check: do not overwrite existing files if not full access */
-    if ( stat(context->FileName, &filestats) == 0 )
+    if ( stat(context->file_name, &filestats) == 0 )
     {
-        if ( context->Access != FTP_ACCESS_FULL )
+        if ( context->access != FTP_ACCESS_FULL )
             return sendstring(context, error550_r);
         /* is it a regular file? */
         if ( !S_ISREG(filestats.st_mode) )
@@ -1248,13 +1255,13 @@ ssize_t ftpSTOR(PFTPCONTEXT context, const char *params)
     return 1;
 }
 
-ssize_t ftpSYST(PFTPCONTEXT context, const char *params)
+ssize_t ftpSYST(pftp_context context, const char *params)
 {
 	__attribute__((unused)) const char *un = params;
     return sendstring(context, success215);
 }
 
-ssize_t ftpHELP(PFTPCONTEXT context, const char *params)
+ssize_t ftpHELP(pftp_context context, const char *params)
 {
 	__attribute__((unused)) const char *un = params;
     return sendstring(context, success214);
@@ -1265,13 +1272,13 @@ int isoctaldigit(char c)
     return ((c >= '0') && (c < '8'));
 }
 
-ssize_t parseCHMOD(PFTPCONTEXT context, const char* params)
+ssize_t parseCHMOD(pftp_context context, const char* params)
 {
     mode_t flags = 0;
 
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
-    if ( context->Access < FTP_ACCESS_FULL )
+    if ( context->access < FTP_ACCESS_FULL )
         return sendstring(context, error550_r);
 
     while (isoctaldigit(*params))
@@ -1287,11 +1294,11 @@ ssize_t parseCHMOD(PFTPCONTEXT context, const char* params)
     while (*params == ' ')
         ++params;
 
-    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
-    return (chmod(context->FileName, flags) == 0);
+    ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
+    return (chmod(context->file_name, flags) == 0);
 }
 
-ssize_t ftpSITE(PFTPCONTEXT context, const char *params)
+ssize_t ftpSITE(pftp_context context, const char *params)
 {
     if ( params != NULL )
     {
@@ -1310,35 +1317,35 @@ ssize_t ftpSITE(PFTPCONTEXT context, const char *params)
     return sendstring(context, error500);
 }
 
-ssize_t ftpFEAT(PFTPCONTEXT context, const char *params)
+ssize_t ftpFEAT(pftp_context context, const char *params)
 {
 	__attribute__((unused)) const char *un = params;
     return sendstring(context, success211);
 }
 
-void *append_thread(PTHCONTEXT tctx)
+void *append_thread(pthcontext tctx)
 {
-    tctx->FnType = STOR_TYPE_APPEND;
+    tctx->fn_type = STOR_TYPE_APPEND;
     return stor_thread(tctx);
 }
 
-ssize_t ftpAPPE(PFTPCONTEXT context, const char *params)
+ssize_t ftpAPPE(pftp_context context, const char *params)
 {
     struct	stat	filestats;
 
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
-    if ( context->Access < FTP_ACCESS_FULL )
+    if ( context->access < FTP_ACCESS_FULL )
         return sendstring(context, error550_r);
     if ( params == NULL )
         return sendstring(context, error501);
-    if ((context->WorkerThreadValid == 0) || (context->hFile != -1))
+    if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
         return sendstring(context, error550_t);
 
-    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
+    ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
 
     /* stat must NOT fail */
-    while (stat(context->FileName, &filestats) == 0)
+    while (stat(context->file_name, &filestats) == 0)
     {
         /* do not try to "append" for directories */
         if ( !S_ISREG(filestats.st_mode) )
@@ -1353,22 +1360,22 @@ ssize_t ftpAPPE(PFTPCONTEXT context, const char *params)
     return sendstring(context, error550);
 }
 
-ssize_t ftpRNFR(PFTPCONTEXT context, const char *params)
+ssize_t ftpRNFR(pftp_context context, const char *params)
 {
     struct stat		filestats;
 
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
-    if ( context->Access < FTP_ACCESS_FULL )
+    if ( context->access < FTP_ACCESS_FULL )
         return sendstring(context, error550_r);
     if ( params == NULL )
         return sendstring(context, error501);
 
-    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->RnFrom), context->RnFrom);
+    ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->rn_from), context->rn_from);
 
-    if ( stat(context->RnFrom, &filestats) == 0 )
+    if ( stat(context->rn_from, &filestats) == 0 )
     {
-        writelogentry(context, " RNFR: ", context->RnFrom);
+        writelogentry(context, " RNFR: ", context->rn_from);
         sendstring(context, interm350_ren);
     }
     else
@@ -1377,29 +1384,29 @@ ssize_t ftpRNFR(PFTPCONTEXT context, const char *params)
     return 1;
 }
 
-ssize_t ftpRNTO(PFTPCONTEXT context, const char *params)
+ssize_t ftpRNTO(pftp_context context, const char *params)
 {
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
-    if ( context->Access < FTP_ACCESS_FULL )
+    if ( context->access < FTP_ACCESS_FULL )
         return sendstring(context, error550_r);
     if ( params == NULL )
         return sendstring(context, error501);
 
-    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
-    if ( rename(context->RnFrom, context->FileName) == 0 )
+    ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
+    if ( rename(context->rn_from, context->file_name) == 0 )
     {
-        writelogentry(context, " RNTO: ", context->FileName);
+        writelogentry(context, " RNTO: ", context->file_name);
         sendstring(context, success250);
     }
     else
         sendstring(context, error550);
 
-    memset(&context->RnFrom, 0, sizeof(context->RnFrom));
+    memset(&context->rn_from, 0, sizeof(context->rn_from));
     return 1;
 }
 
-ssize_t ftpOPTS(PFTPCONTEXT context, const char *params)
+ssize_t ftpOPTS(pftp_context context, const char *params)
 {
     if ( params != NULL )
         if (strcasecmp(params, "utf8 on") == 0)
@@ -1409,7 +1416,7 @@ ssize_t ftpOPTS(PFTPCONTEXT context, const char *params)
     return sendstring(context, error500);
 }
 
-ssize_t ftpAUTH(PFTPCONTEXT context, const char *params)
+ssize_t ftpAUTH(pftp_context context, const char *params)
 {
     if ( params == NULL )
         return sendstring(context, error501);
@@ -1417,45 +1424,45 @@ ssize_t ftpAUTH(PFTPCONTEXT context, const char *params)
     if ( strcasecmp(params, "TLS") == 0 )
     {
         /* ftp_init_tls_session will send a status reply */
-        ftp_init_tls_session(&context->TLS_session, context->ControlSocket, 1);
+        ftp_init_tls_session(&context->tls_session, context->control_socket, 1);
         return 1;
     }
     else
         return sendstring(context, error504);
 }
 
-ssize_t ftpPBSZ (PFTPCONTEXT context, const char *params)
+ssize_t ftpPBSZ (pftp_context context, const char *params)
 {
     if ( params == NULL )
         return sendstring(context, error501);
 
-    if ( context->TLS_session == NULL )
+    if ( context->tls_session == NULL )
         return sendstring(context, error503);
 
-    context->BlockSize = strtoul(params, NULL, 10);
+    context->block_size = strtoul(params, NULL, 10);
     return sendstring(context, success200);
 }
 
-ssize_t ftpPROT (PFTPCONTEXT context, const char *params)
+ssize_t ftpPROT (pftp_context context, const char *params)
 {
-    if ( context->Access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
 
     if ( params == NULL )
         return sendstring(context, error501);
 
-    if ( context->TLS_session == NULL )
+    if ( context->tls_session == NULL )
         return sendstring(context, error503);
 
     switch (*params)
     {
     case 'C':
-        context->DataProtectionLevel = 0;
+        context->data_protection_level = 0;
         return sendstring(context, success200);
         break;
 
     case 'P':
-        context->DataProtectionLevel = 100;
+        context->data_protection_level = 100;
         return sendstring(context, success200);
         break;
 
@@ -1513,24 +1520,24 @@ ssize_t mlsd_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dire
     return sendstring_auto(s, session, text);
 }
 
-void *mlsd_thread(PTHCONTEXT tctx)
+void *mlsd_thread(pthcontext tctx)
 {
-    tctx->FnType = LIST_TYPE_MLSD;
+    tctx->fn_type = LIST_TYPE_MLSD;
     return list_thread(tctx);
 }
 
-ssize_t ftpMLSD(PFTPCONTEXT context, const char *params)
+ssize_t ftpMLSD(pftp_context context, const char *params)
 {
     struct  stat    filestats;
 
-    if (context->Access == FTP_ACCESS_NOT_LOGGED_IN)
+    if (context->access == FTP_ACCESS_NOT_LOGGED_IN)
         return sendstring(context, error530);
-    if ((context->WorkerThreadValid == 0) || (context->hFile != -1))
+    if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
         return sendstring(context, error550_t);
 
-    ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
+    ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
 
-    while (stat(context->FileName, &filestats) == 0)
+    while (stat(context->file_name, &filestats) == 0)
     {
         if ( !S_ISDIR(filestats.st_mode) )
             break;
@@ -1544,7 +1551,7 @@ ssize_t ftpMLSD(PFTPCONTEXT context, const char *params)
     return sendstring(context, error550);
 }
 
-int recvcmd(PFTPCONTEXT context, char *buffer, size_t buffer_size)
+int recvcmd(pftp_context context, char *buffer, size_t buffer_size)
 {
     ssize_t	l, p = 0;
 
@@ -1556,10 +1563,10 @@ int recvcmd(PFTPCONTEXT context, char *buffer, size_t buffer_size)
 
     while (buffer_size > 0)
     {
-        if (context->TLS_session == NULL)
-            l = recv(context->ControlSocket, buffer+p, buffer_size, 0);
+        if (context->tls_session == NULL)
+            l = recv(context->control_socket, buffer+p, buffer_size, 0);
         else
-            l = gnutls_record_recv(context->TLS_session, buffer+p, buffer_size);
+            l = gnutls_record_recv(context->tls_session, buffer+p, buffer_size);
 
         if ( l <= 0 )
             return 0;
@@ -1585,46 +1592,46 @@ int recvcmd(PFTPCONTEXT context, char *buffer, size_t buffer_size)
 
 void *ftp_client_thread(SOCKET s)
 {
-    FTPCONTEXT				ctx __attribute__ ((aligned (16)));
-    char					*cmd, *params, rcvbuf[PATH_MAX];
-    int						c, cmdno;
+    ftp_context             ctx __attribute__ ((aligned (16)));
+    char                    *cmd, *params, rcvbuf[PATH_MAX];
+    int                     c, cmdno;
     ssize_t                 rv;
-    unsigned int			tn;
-    size_t					i, cmdlen;
-    socklen_t				asz;
-    struct sockaddr_in		laddr;
+    unsigned int            tn;
+    size_t                  i, cmdlen;
+    socklen_t               asz;
+    struct sockaddr_in      laddr;
 
     pthread_detach(pthread_self());
     memset(&rcvbuf, 0, sizeof(rcvbuf));
     memset(&ctx, 0, sizeof(ctx));
 
-    ctx.Busy = 0;
-    ctx.Access = FTP_ACCESS_NOT_LOGGED_IN;
-    ctx.ControlSocket = s;
-    ctx.SessionID = __sync_add_and_fetch(&g_newid, 1);
+    ctx.busy = 0;
+    ctx.access = FTP_ACCESS_NOT_LOGGED_IN;
+    ctx.control_socket = s;
+    ctx.session_id = __sync_add_and_fetch(&g_newid, 1);
     tn = __sync_add_and_fetch(&g_threads, 1);
     snprintf(rcvbuf, sizeof(rcvbuf), "<- New thread. Thread counter g_threads=%i", tn);
     writelogentry(&ctx, rcvbuf, "");
 
     memset(&laddr, 0, sizeof(laddr));
     asz = sizeof(laddr);
-    while ( getsockname(ctx.ControlSocket, (struct sockaddr *)&laddr, &asz) == 0 )
+    while ( getsockname(ctx.control_socket, (struct sockaddr *)&laddr, &asz) == 0 )
     {
-        ctx.ServerIPv4 = laddr.sin_addr.s_addr;
+        ctx.server_ipv4 = laddr.sin_addr.s_addr;
 
         memset(&laddr, 0, sizeof(laddr));
         asz = sizeof(laddr);
-        if ( getpeername(ctx.ControlSocket, (struct sockaddr *)&laddr, &asz) != 0 )
+        if ( getpeername(ctx.control_socket, (struct sockaddr *)&laddr, &asz) != 0 )
             break;
 
-        ctx.ClientIPv4 = laddr.sin_addr.s_addr;
-        ctx.Mode = MODE_NORMAL;
-        ctx.WorkerThreadAbort = 1;
-        ctx.WorkerThreadValid = -1;
-        ctx.hFile = -1;
-        ctx.DataSocket = INVALID_SOCKET;
+        ctx.client_ipv4 = laddr.sin_addr.s_addr;
+        ctx.mode = MODE_NORMAL;
+        ctx.worker_thread_abort = 1;
+        ctx.worker_thread_valid = -1;
+        ctx.file_fd = -1;
+        ctx.data_socket = INVALID_SOCKET;
 
-        ctx.CurrentDir[0] = '/';
+        ctx.current_dir[0] = '/';
         sendstring(&ctx, success220);
 
         memset(&rcvbuf, 0, sizeof(rcvbuf));
@@ -1639,7 +1646,7 @@ void *ftp_client_thread(SOCKET s)
 
         writelogentry(&ctx, rcvbuf, "");
 
-        while ( ctx.ControlSocket != INVALID_SOCKET ) {
+        while ( ctx.control_socket != INVALID_SOCKET ) {
             if ( !recvcmd(&ctx, rcvbuf, sizeof(rcvbuf)) )
                 break;
 
@@ -1663,10 +1670,10 @@ void *ftp_client_thread(SOCKET s)
             cmdno = -1;
             rv = 1;
             for (c=0; c<MAX_CMDS; c++)
-                if (strncasecmp(cmd, ftpprocs[c].Name, cmdlen) == 0)
+                if (strncasecmp(cmd, ftpprocs[c].name, cmdlen) == 0)
                 {
                     cmdno = c;
-                    rv = ftpprocs[c].Proc(&ctx, params);
+                    rv = ftpprocs[c].proc(&ctx, params);
                     break;
                 }
 
@@ -1688,17 +1695,17 @@ void *ftp_client_thread(SOCKET s)
             " User disconnected. \n==== Session %u statistics ====\n"
             "Rx: %zd bytes (%f MBytes) total received by server in %zd files,\n"
             "Tx: %zd bytes (%f MBytes) total sent to the client in %zd files.\n",
-            ctx.SessionID,
-            ctx.Stats.DataRx, ctx.Stats.DataRx / 1048576.0f, ctx.Stats.FilesRx,
-            ctx.Stats.DataTx, ctx.Stats.DataTx / 1048576.0f, ctx.Stats.FilesTx);
+            ctx.session_id,
+            ctx.stats.data_rx, ctx.stats.data_rx / 1048576.0f, ctx.stats.files_rx,
+            ctx.stats.data_tx, ctx.stats.data_tx / 1048576.0f, ctx.stats.files_tx);
 
         writelogentry(&ctx, rcvbuf, "");
         break;
     }
 
-    ftp_shutdown_tls_session(ctx.TLS_session);
+    ftp_shutdown_tls_session(ctx.tls_session);
 
-    close(ctx.ControlSocket);
+    close(ctx.control_socket);
     __sync_add_and_fetch(&g_client_sockets_closed, 1);
     tn = __sync_sub_and_fetch(&g_threads, 1);
     snprintf(rcvbuf, sizeof(rcvbuf), "<- Thread exit. Thread counter g_threads=%i", tn);
@@ -1716,13 +1723,13 @@ void socket_set_keepalive(int s) {
         return;
     }
 
-    opt = 16; /* set idle status after 16 seconds since last data transfer */;
+    opt = KEEPALIVE_IDLE_SEC; /* set idle status after KEEPALIVE_IDLE_SEC seconds since last data transfer */;
     setsockopt(s, IPPROTO_TCP, TCP_KEEPIDLE, &opt, sizeof(opt));
 
-    opt = 16; /* send keep alive packet every 16 seconds */
+    opt = KEEPALIVE_IDLE_SEC; /* send keep alive packet every KEEPALIVE_IDLE_SEC seconds */
     setsockopt(s, IPPROTO_TCP, TCP_KEEPINTVL, &opt, sizeof(opt));
 
-    opt = 8; /* drop after 8 unanswered packets */
+    opt = KEEPALIVE_PROBE_COUNT; /* drop after KEEPALIVE_PROBE_COUNT unanswered packets */
     setsockopt(s, IPPROTO_TCP, TCP_KEEPCNT, &opt, sizeof(opt));
 }
 
@@ -1731,7 +1738,7 @@ void *ftpmain(void *p)
     struct  sockaddr_in laddr;
 
     int     ftpsocket = INVALID_SOCKET,
-            clientsocket,
+            client_socket,
             socketret,
             rv;
 
@@ -1751,8 +1758,8 @@ void *ftpmain(void *p)
 
     memset(&laddr, 0, sizeof(laddr));
     laddr.sin_family = AF_INET;
-    laddr.sin_port = htons(g_cfg.Port);
-    laddr.sin_addr.s_addr = g_cfg.BindToInterface;
+    laddr.sin_port = htons(g_cfg.port);
+    laddr.sin_addr.s_addr = g_cfg.bind_to_interface;
     socketret = bind(ftpsocket, (struct sockaddr *)&laddr, sizeof(laddr));
     if  ( socketret != 0 ) {
         printf("\r\n Failed to start server. Can not bind to address\r\n\r\n");
@@ -1767,36 +1774,36 @@ void *ftpmain(void *p)
 
         memset(&laddr, 0, sizeof(laddr));
         asz = sizeof(laddr);
-        clientsocket = accept(ftpsocket, (struct sockaddr *)&laddr, &asz);
-        if (clientsocket == INVALID_SOCKET)
+        client_socket = accept(ftpsocket, (struct sockaddr *)&laddr, &asz);
+        if (client_socket == INVALID_SOCKET)
             continue;
 
         __sync_add_and_fetch(&g_client_sockets_created, 1);
 
         rv = -1;
-        if (g_threads < g_cfg.MaxUsers)
+        if (g_threads < g_cfg.max_users)
         {
-            if (g_cfg.EnableKeepalive != 0)
-                socket_set_keepalive(clientsocket);
+            if (g_cfg.enable_keepalive != 0)
+                socket_set_keepalive(client_socket);
 
-            rv = pthread_create(&th, NULL, (void * (*)(void *))ftp_client_thread, (void *)clientsocket);
+            rv = pthread_create(&th, NULL, (void * (*)(void *))ftp_client_thread, (void *)client_socket);
             if (rv != 0)
-                sendstring_plaintext(clientsocket, error451);
+                sendstring_plaintext(client_socket, error451);
         }
         else
         {
-            sendstring_plaintext(clientsocket, error451_max);
+            sendstring_plaintext(client_socket, error451_max);
         }
 
         if (rv != 0)
         {
-            close(clientsocket);
+            close(client_socket);
             __sync_add_and_fetch(&g_client_sockets_closed, 1);
         }
 
         snprintf(text, sizeof(text),
-                "MAIN LOOP stats: g_threads=%i, g_cfg.MaxUsers=%llu, g_client_sockets_created=%llu, g_client_sockets_closed=%llu\r\n",
-                g_threads, g_cfg.MaxUsers, g_client_sockets_created, g_client_sockets_closed);
+                "MAIN LOOP stats: g_threads=%i, g_cfg.max_users=%" PRIu64 ", g_client_sockets_created=%llu, g_client_sockets_closed=%llu\r\n",
+                g_threads, g_cfg.max_users, g_client_sockets_created, g_client_sockets_closed);
 
         writelogentry(NULL, text, "");
     }

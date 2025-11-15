@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Nov 4, 2025
+ *  Modified on: Nov 08, 2025
  *
  *      Author: lightftp
  */
@@ -24,6 +24,7 @@
 #endif
 
 #include <time.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -43,24 +44,32 @@
 #include <gnutls/gnutls.h>
 
 #if defined __CYGWIN__
+#ifndef TCP_KEEPALIVE
 #define TCP_KEEPALIVE       	 3
+#endif
+#ifndef TCP_KEEPCNT
 #define TCP_KEEPCNT              16
+#endif
+#ifndef TCP_KEEPIDLE
 #define TCP_KEEPIDLE             TCP_KEEPALIVE
+#endif
+#ifndef TCP_KEEPINTVL
 #define TCP_KEEPINTVL            17
 #endif
+#endif
 
-typedef struct _FTP_CONFIG {
-    char*           ConfigFile;
-    uint64_t        MaxUsers;
-    uint64_t        EnableKeepalive;
-    int             FileOpenFlags;
-    in_port_t       Port;
-    in_port_t       PasvPortBase;
-    in_port_t       PasvPortMax;
-    in_addr_t       BindToInterface;
-    in_addr_t       ExternalInterface;
-    in_addr_t       LocalIPMask;
-} FTP_CONFIG, *PFTP_CONFIG;
+typedef struct _ftp_config {
+    char*           config_file;
+    uint64_t        max_users;
+    uint64_t        enable_keepalive;
+    int             file_open_flags;
+    in_port_t       port;
+    in_port_t       pasv_port_base;
+    in_port_t       pasv_port_max;
+    in_addr_t       bind_to_interface;
+    in_addr_t       external_interface;
+    in_addr_t       local_ip_mask;
+} ftp_config, *pftp_config;
 
 #define FTP_VERSION          "2.4"
 #define CONFIG_FILE_NAME     "fftp.conf"
@@ -86,65 +95,65 @@ typedef struct _FTP_CONFIG {
 
 #define TRANSMIT_BUFFER_SIZE    65536
 
-typedef struct _SESSION_STATS {
-    uint64_t    DataRx;
-    uint64_t    DataTx;
-    uint64_t    FilesRx;
-    uint64_t    FilesTx;
-} SESSION_STATS, *PSESSION_STATS;
+typedef struct _session_stats {
+    uint64_t    data_rx;
+    uint64_t    data_tx;
+    uint64_t    files_rx;
+    uint64_t    files_tx;
+} session_stats, *psession_stats;
 
-typedef struct _FTPCONTEXT {
-    int                 Busy;
-    SOCKET              ControlSocket;
-    SOCKET              DataSocket;
-    pthread_t           WorkerThreadId;
+typedef struct _ftp_context {
+    int                 busy;
+    SOCKET              control_socket;
+    SOCKET              data_socket;
+    pthread_t           worker_thread_id;
     /*
-     * WorkerThreadValid is output of pthread_create
+     * worker_thread_valid is output of pthread_create
      * therefore zero is VALID indicator and -1 is invalid.
      */
-    int                 WorkerThreadValid;
-    int                 WorkerThreadAbort;
-    in_addr_t           ServerIPv4;
-    in_addr_t           ClientIPv4;
-    in_addr_t           DataIPv4;
-    in_port_t           DataPort;
-    int                 hFile;
-    int                 Mode;
-    int                 Access;
-    unsigned int        SessionID;
-    int                 DataProtectionLevel;
-    off_t               RestPoint;
-    uint64_t            BlockSize;
-    char                CurrentDir[PATH_MAX];
-    char                UserName[PATH_MAX];
-    char                RootDir[PATH_MAX];
-    char                RnFrom[PATH_MAX];
-    char                FileName[2*PATH_MAX];
-    gnutls_session_t    TLS_session;
-    SESSION_STATS       Stats;
-} FTPCONTEXT, *PFTPCONTEXT;
+    int                 worker_thread_valid;
+    int                 worker_thread_abort;
+    in_addr_t           server_ipv4;
+    in_addr_t           client_ipv4;
+    in_addr_t           data_ipv4;
+    in_port_t           data_port;
+    int                 file_fd;
+    int                 mode;
+    int                 access;
+    unsigned int        session_id;
+    int                 data_protection_level;
+    off_t               rest_point;
+    uint64_t            block_size; // reserved for future use
+    char                current_dir[PATH_MAX];
+    char                user_name[PATH_MAX];
+    char                root_dir[PATH_MAX];
+    char                rn_from[PATH_MAX];
+    char                file_name[2*PATH_MAX];
+    gnutls_session_t    tls_session;
+    session_stats       stats;
+} ftp_context, *pftp_context;
 
 #define LIST_TYPE_UNIX  0
 #define LIST_TYPE_MLSD  1
 #define STOR_TYPE_RECREATE_TRUNC  0
 #define STOR_TYPE_APPEND  1
 
-typedef struct _THCONTEXT {
-    PFTPCONTEXT     context;
-    char            thFileName[2*PATH_MAX];
-    int             FnType;
-} THCONTEXT, *PTHCONTEXT;
+typedef struct _thcontext {
+    pftp_context  context;
+    char          th_file_name[2*PATH_MAX];
+    int           fn_type;
+} thcontext, *pthcontext;
 
-typedef ssize_t (*FTPROUTINE) (PFTPCONTEXT context, const char* params);
+typedef ssize_t (*ftproutine) (pftp_context context, const char* params);
 
-typedef struct _FTPROUTINE_ENTRY {
-    const char* Name;
-    FTPROUTINE  Proc;
-} FTPROUTINE_ENTRY, *PFTPROUTINE_ENTRY;
+typedef struct _ftproutine_entry {
+    const char* name;
+    ftproutine  proc;
+} ftproutine_entry, *pftproutine_entry;
 
-typedef void * (*PSTARTROUTINE)(PTHCONTEXT);
+typedef void * (*pstartroutine)(pthcontext);
 
-extern FTP_CONFIG   g_cfg;
+extern ftp_config   g_cfg;
 extern int          g_log;
 extern void*        ftpmain(void* p);
 extern char         GOODBYE_MSG[MSG_MAXLEN];
@@ -153,7 +162,7 @@ extern gnutls_certificate_credentials_t     x509_cred;
 extern gnutls_priority_t                    priority_cache;
 extern gnutls_datum_t                       session_keys_storage;
 
-#define FTP_COMMAND(cmdname)    ssize_t cmdname(PFTPCONTEXT context, const char* params)
+#define FTP_COMMAND(cmdname)    ssize_t cmdname(pftp_context context, const char* params)
 #define MAX_CMDS                32
 extern const char               shortmonths[12][4];
 
