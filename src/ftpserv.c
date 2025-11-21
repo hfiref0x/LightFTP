@@ -22,7 +22,8 @@ static const ftproutine_entry ftpprocs[MAX_CMDS] = {
         {"MKD",  ftpMKD }, {"RMD",  ftpRMD }, {"STOR", ftpSTOR}, {"SYST", ftpSYST},
         {"FEAT", ftpFEAT}, {"APPE", ftpAPPE}, {"RNFR", ftpRNFR}, {"RNTO", ftpRNTO},
         {"OPTS", ftpOPTS}, {"MLSD", ftpMLSD}, {"AUTH", ftpAUTH}, {"PBSZ", ftpPBSZ},
-        {"PROT", ftpPROT}, {"EPSV", ftpEPSV}, {"HELP", ftpHELP}, {"SITE", ftpSITE}
+        {"PROT", ftpPROT}, {"EPSV", ftpEPSV}, {"HELP", ftpHELP}, {"SITE", ftpSITE},
+        {"MODE", ftpMODE}, {"STRU", ftpSTRU}
 };
 
 void *mlsd_thread(pthcontext tctx);
@@ -1549,6 +1550,16 @@ ssize_t ftpMLSD(pftp_context context, const char *params)
     }
 
     return sendstring(context, error550);
+}
+
+ssize_t ftpMODE(pftp_context context, const char *params)
+{
+    return sendstring(context, error502);
+}
+
+ssize_t ftpSTRU(pftp_context context, const char *params)
+{
+    return sendstring(context, error502);
 }
 
 int recvcmd(pftp_context context, char *buffer, size_t buffer_size)
