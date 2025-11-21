@@ -377,6 +377,11 @@ ssize_t ftpPORT(pftp_context context, const char *params)
         return sendstring(context, error501);
 
     for (c = 0; c < 4; ++c) {
+        unsigned long num = strtoul(p, NULL, 10);
+        if (num < 0 || num > 255){
+			return sendstring(context, error501); // Invalid range check
+		}
+
         data_ipv4 += ((in_addr_t)strtoul(p, NULL, 10)) << c*8;
         while ( (*p >= '0') && (*p <= '9') )
             ++p;
@@ -386,6 +391,10 @@ ssize_t ftpPORT(pftp_context context, const char *params)
     }
 
     for (c = 0; c < 2; ++c) {
+        unsigned long num = strtoul(p, NULL, 10);
+        if (num < 0 || num > 255){
+			return sendstring(context, error501); // Invalid range check
+		}
         data_port += ((in_addr_t)strtoul(p, NULL, 10)) << c*8;
         while ( (*p >= '0') && (*p <= '9') )
             ++p;
