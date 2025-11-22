@@ -213,7 +213,7 @@ extern const char success214[];
 #define error500       "500 Syntax error, command unrecognized.\r\n"
 #define error500_auth  "500 AUTH unsuccessful.\r\n"
 #define error501       "501 Syntax error in parameters or arguments.\r\n"
-#define error502       "502 Command not implemented.\r\n";
+#define error502       "502 Command not implemented.\r\n"
 #define error503       "503 Invalid sequence of commands (AUTH TLS required prior to authentication).\r\n"
 #define error504       "504 Command not implemented for that parameter.\r\n"
 #define error530       "530 Please login with USER and PASS: use USER immediately followed by PASS.\r\n"
