@@ -21,7 +21,8 @@ static const FTPROUTINE_ENTRY ftpprocs[MAX_CMDS] = {
         {"MKD",  ftpMKD }, {"RMD",  ftpRMD }, {"STOR", ftpSTOR}, {"SYST", ftpSYST},
         {"FEAT", ftpFEAT}, {"APPE", ftpAPPE}, {"RNFR", ftpRNFR}, {"RNTO", ftpRNTO},
         {"OPTS", ftpOPTS}, {"MLSD", ftpMLSD}, {"AUTH", ftpAUTH}, {"PBSZ", ftpPBSZ},
-        {"PROT", ftpPROT}, {"EPSV", ftpEPSV}, {"HELP", ftpHELP}, {"SITE", ftpSITE}
+        {"PROT", ftpPROT}, {"EPSV", ftpEPSV}, {"HELP", ftpHELP}, {"SITE", ftpSITE},
+        {"MODE", ftpMODE}, {"STRU", ftpSTRU}
 };
 
 void *mlsd_thread(PTHCONTEXT tctx);
@@ -1612,6 +1613,16 @@ int ftpMLSD(PFTPCONTEXT context, const char *params)
     }
 
     return sendstring(context, error550);
+}
+
+int ftpMODE(PFTPCONTEXT context, const char *params)
+{
+    return sendstring(context, error502);
+}
+
+int ftpSTRU(PFTPCONTEXT context, const char *params)
+{
+    return sendstring(context, error502);
 }
 
 int recvcmd(PFTPCONTEXT context, char *buffer, size_t buffer_size)
