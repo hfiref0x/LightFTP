@@ -364,6 +364,11 @@ int ftpTYPE(PFTPCONTEXT context, const char *params)
     case 'I':
     case 'i':
         return sendstring(context, success200_2);
+    
+    case 'L':
+        return sendstring(context, error504);
+    case 'E':
+        return sendstring(context, error504);
 
     default:
         return sendstring(context, error501);
