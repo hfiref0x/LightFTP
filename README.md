@@ -3,6 +3,19 @@
 # LightFTP
 * Small x86-32/x64 FTP Server
 
+## Table of Contents
+
+* [System Requirements](#system-requirements)
+* [Configuration](#configuration)
+  * [ftpconfig Section](#ftpconfig)
+  * [User Sections](#user-sections)
+* [Build](#build)
+  * [Example for Linux Mint/Ubuntu](#example-for-linux-mintubuntu)
+* [Contributing](#contributing)
+* [Old Windows Version](#old-windows-version)
+* [Changelog](#changelog)
+* [Authors](#authors)
+
 # System Requirements
 
 * x86-32/x64 POSIX-compliant OS, e.g. Linux.
@@ -107,8 +120,8 @@ Example of configuration file can be found in the `src` directory as `fftp.conf`
 # Build 
 
 * LightFTP comes with full source code, written in C.
-* In order to build from source in Windows, you need a Cygwin environment (https://www.cygwin.com/) with GNU make, gnutls, and pthreads packages installed. Also, make sure the Cygwin bin folder is set in the system-wide PATH variable (e.g. `PATH=SomeOfYourOtherValues;C:\Cygwin\bin;C:\Cygwin\usr\bin`). To build the executable, run the `make` command in the `Release` directory.
-* In order to build from source in Linux, you need the GCC C compiler. Run the `make` command in the `Release` directory. LightFTP uses GnuTLS, make sure you have headers (`libgnutls-dev` or `gnutls-dev`) installed.
+* In order to build from source in Windows, you need a Cygwin environment (https://www.cygwin.com/) with GNU make, gnutls, and pthreads packages installed. Also, make sure the Cygwin bin folder is set[...]
+* In order to build from source in Linux, you need the GCC C compiler. Run the `make` command in the `Release` directory. LightFTP uses GnuTLS, make sure you have headers (`libgnutls-dev` or `gnutls-d[...]
 * For debug builds with AddressSanitizer, run `make` in the `Debug` directory. ASAN helps detect memory errors and undefined behavior during development.
 
 ### Example for Linux Mint/Ubuntu
@@ -146,7 +159,20 @@ To run with ASAN enabled:
 		      
       ASAN_OPTIONS=abort_on_error=1,strict_string_checks=1,detect_stack_use_after_return=1,handle_segv=1,allow_user_segv_handler=1 ./LightFTP/src/Release/fftp ./LightFTP/data/fftp.conf
       
-The resulting binary is `fftp`. Next, set up the ftp config. Example config file is `data/fftp.conf`. Set port, accounts, path to log file (optionally, if you need it), path to certificates if you want to use them, etc.
+The resulting binary is `fftp`. Next, set up the ftp config. Example config file is `data/fftp.conf`. Set port, accounts, path to log file (optionally, if you need it), path to certificates if you wan[...]
+
+# Contributing
+
+LightFTP prioritizes **real-world client compatibility over theoretical RFC compliance**. This project is designed to work with the majority of popular FTP clients, many of which are not fully RFC-compliant.
+
+Before submitting pull requests or issues, please read our [Contributing Guidelines](CONTRIBUTING.md) which include:
+
+* Requirements for code compilation and testing
+* Testing against multiple FTP clients (FileZilla, WinSCP, CuteFTP, etc.)
+* Project philosophy on RFC compliance vs. practical compatibility
+* What types of contributions will be accepted or rejected
+
+**Key principle:** Every contribution must demonstrate real-world value and compatibility with actual FTP clients.
 
 # Old Windows Version
 
