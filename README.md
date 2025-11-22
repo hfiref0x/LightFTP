@@ -19,7 +19,7 @@
 # System Requirements
 
 * x86-32/x64 POSIX-compliant OS, e.g. Linux.
-* x86-32/x64 Windows 7/8/8.1/10 with Cygwin (see Build section of this README).
+* x86-32/x64 Windows 7/8/8.1/10/11 with Cygwin (see Build section of this README).
 * No admin/root privileges required. The FTP server must be allowed in the firewall.
 
 # Configuration
