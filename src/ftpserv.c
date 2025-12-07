@@ -625,6 +625,10 @@ int ftpLIST(PFTPCONTEXT context, const char *params)
             params = NULL;
     }
 
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
+
     ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
     while (stat(context->FileName, &filestats) == 0)
@@ -675,6 +679,10 @@ int ftpCWD(PFTPCONTEXT context, const char *params)
 
     if ( params == NULL )
         return sendstring(context, error501);
+
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
 
     ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
@@ -830,6 +838,10 @@ int ftpRETR(PFTPCONTEXT context, const char *params)
     if ((context->WorkerThreadValid == 0) || (context->hFile != -1))
         return sendstring(context, error550_t);
 
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
+
     ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
     while (stat(context->FileName, &filestats) == 0)
@@ -870,6 +882,10 @@ int ftpDELE(PFTPCONTEXT context, const char *params)
         return sendstring(context, error550_r);
     if ( params == NULL )
         return sendstring(context, error501);
+
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
 
     ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
@@ -1093,6 +1109,10 @@ int ftpSIZE(PFTPCONTEXT context, const char *params)
     if ( params == NULL )
         return sendstring(context, error501);
 
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
+
     ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
     if ( stat(context->FileName, &filestats) == 0 )
@@ -1119,6 +1139,10 @@ int ftpMKD(PFTPCONTEXT context, const char *params)
     if ( params == NULL )
         return sendstring(context, error501);
 
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
+
     ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
     if ( mkdir(context->FileName, 0755) == 0 ) {
@@ -1142,6 +1166,10 @@ int ftpRMD(PFTPCONTEXT context, const char *params)
         return sendstring(context, error550_r);
     if ( params == NULL )
         return sendstring(context, error501);
+
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
 
     ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
@@ -1286,6 +1314,10 @@ int ftpSTOR(PFTPCONTEXT context, const char *params)
     if ((context->WorkerThreadValid == 0) || (context->hFile != -1))
         return sendstring(context, error550_t);
 
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
+
     ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
     /* check: do not overwrite existing files if not full access */
@@ -1394,6 +1426,10 @@ int ftpAPPE(PFTPCONTEXT context, const char *params)
     if ((context->WorkerThreadValid == 0) || (context->hFile != -1))
         return sendstring(context, error550_t);
 
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
+
     ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
     /* stat must NOT fail */
@@ -1426,6 +1462,10 @@ int ftpRNFR(PFTPCONTEXT context, const char *params)
     if ( params == NULL )
         return sendstring(context, error501);
 
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
+
     ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->RnFrom), context->RnFrom);
 
     if ( stat(context->RnFrom, &filestats) == 0 )
@@ -1450,6 +1490,10 @@ int ftpRNTO(PFTPCONTEXT context, const char *params)
         return sendstring(context, error550_r);
     if ( params == NULL )
         return sendstring(context, error501);
+
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
 
     ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
     if ( rename(context->RnFrom, context->FileName) == 0 )
@@ -1598,6 +1642,10 @@ int ftpMLSD(PFTPCONTEXT context, const char *params)
     }
     if ((context->WorkerThreadValid == 0) || (context->hFile != -1))
         return sendstring(context, error550_t);
+
+    if (strchr(params, '\r') != NULL || strchr(params, '\n') != NULL) {
+        return sendstring(context, error501);
+    }
 
     ftp_effective_path(context->RootDir, context->CurrentDir, params, sizeof(context->FileName), context->FileName);
 
