@@ -1,4 +1,5 @@
-[![Visitors](https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2Fhfiref0x%2FLightFTP&countColor=%23263759&style=flat)](https://visitorbadge.io/status?path=https%3A%2F%2Fgithub.com%2Fhfiref0x%2FLightFTP) [![Build status](https://ci.appveyor.com/api/projects/status/0mvll9a7emrqo0a7?svg=true)](https://ci.appveyor.com/project/hfiref0x/lightftp)
+[![Build status](https://img.shields.io/appveyor/build/hfiref0x/lightftp?logo=appveyor)](https://ci.appveyor.com/project/hfiref0x/lightftp)
+[![Visitors](https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2Fhfiref0x%2FLightFTP&countColor=%23263759&style=flat)](https://visitorbadge.io/status?path=https%3A%2F%2Fgithub.com%2Fhfiref0x%2FLightFTP) 
 
 # LightFTP
 * Small x86-32/x64 FTP Server
@@ -184,4 +185,4 @@ Changelog available at `data/changelog.txt`.
 
 # Authors
 
-(c) 2007 - 2025 LightFTP Project
+(c) 2007 - 2026 LightFTP Project
