@@ -1698,7 +1698,7 @@ void *ftp_client_thread(SOCKET s)
                 break;
 
             i = 0;
-            while ((rcvbuf[i] != 0) && (isalpha(rcvbuf[i]) == 0))
+            while ((rcvbuf[i] != 0) && (isalpha((unsigned char)rcvbuf[i]) == 0))
                 ++i;
 
             cmd = &rcvbuf[i];
