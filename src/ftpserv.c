@@ -129,9 +129,9 @@ int ftp_init_tls_session(gnutls_session_t *session, SOCKET s, int send_status)
 
 static int data_connection_ready(pftp_context context)
 {
-    if (context->mode == MODE_NORMAL && context->data_port == 0)
+    if ((context->mode == MODE_NORMAL) && (context->data_port == 0))
         return 0;
-    if (context->mode == MODE_PASSIVE && context->data_socket == INVALID_SOCKET)
+    if ((context->mode == MODE_PASSIVE) && (context->data_socket == INVALID_SOCKET))
         return 0;
     return 1;
 }
