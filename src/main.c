@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Nov 08, 2025
+ *  Modified on: Feb 14, 2026
  *
  *      Author: lightftp
  */
@@ -101,7 +101,7 @@ int main(int argc, char *argv[])
 		memset(textbuf, 0, bufsize);
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "logfilepath", textbuf, bufsize))
 		{
-			g_log = open(textbuf, O_RDWR | O_CREAT, S_IWUSR | S_IRUSR);
+			g_log = open(textbuf, O_RDWR | O_CREAT | O_CLOEXEC, S_IWUSR | S_IRUSR);
 			if (g_log == -1)
 			{
 				printf("Error: Failed to open/create log file. Please check logfilepath: %s\r\n", textbuf);

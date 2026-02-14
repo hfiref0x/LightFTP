@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Jul 25, 2025
+ *  Modified on: Feb 14, 2026
  *
  *      Author: lightftp
  */
@@ -161,17 +161,27 @@ char *config_init(char *cfg_filename)
 	int		f_config;
 	char	*buffer = NULL;
 	off_t	fsz;
+    ssize_t rd;
 
-	f_config = open(cfg_filename, O_RDONLY);
+	f_config = open(cfg_filename, O_RDONLY | O_CLOEXEC);
 	while (f_config != -1)
 	{
-		fsz = lseek(f_config, 0L, SEEK_END) + 1;
-		lseek(f_config, 0L, SEEK_SET);
+		fsz = lseek(f_config, 0L, SEEK_END);
+        if (fsz == (off_t)-1 || fsz == 0)
+			break;
 
-		buffer = x_malloc(fsz);
+        lseek(f_config, 0L, SEEK_SET);
+        buffer = x_malloc(fsz + 1);
 
-		fsz = read(f_config, buffer, fsz);
-		buffer[fsz] = 0;
+        rd = read(f_config, buffer, fsz);
+        if (rd <= 0)
+        {
+            free(buffer);
+            buffer = NULL;
+            break;
+        }
+
+		buffer[rd] = 0;
 		break;
 	}
 

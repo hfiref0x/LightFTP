@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Nov 08, 2025
+ *  Modified on: Feb 14, 2026
  *
  *      Author: lightftp
  */
@@ -15,14 +15,14 @@
 #include "inc/sha256sum.h"
 
 static const ftproutine_entry ftpprocs[MAX_CMDS] = {
-        {"USER", ftpUSER}, {"QUIT", ftpQUIT}, {"NOOP", ftpNOOP}, {"PWD",  ftpPWD },
-        {"TYPE", ftpTYPE}, {"PORT", ftpPORT}, {"LIST", ftpLIST}, {"CDUP", ftpCDUP},
-        {"CWD",  ftpCWD }, {"RETR", ftpRETR}, {"ABOR", ftpABOR}, {"DELE", ftpDELE},
-        {"PASV", ftpPASV}, {"PASS", ftpPASS}, {"REST", ftpREST}, {"SIZE", ftpSIZE},
-        {"MKD",  ftpMKD }, {"RMD",  ftpRMD }, {"STOR", ftpSTOR}, {"SYST", ftpSYST},
-        {"FEAT", ftpFEAT}, {"APPE", ftpAPPE}, {"RNFR", ftpRNFR}, {"RNTO", ftpRNTO},
-        {"OPTS", ftpOPTS}, {"MLSD", ftpMLSD}, {"AUTH", ftpAUTH}, {"PBSZ", ftpPBSZ},
-        {"PROT", ftpPROT}, {"EPSV", ftpEPSV}, {"HELP", ftpHELP}, {"SITE", ftpSITE}
+        {"ABOR", ftpABOR}, {"APPE", ftpAPPE}, {"AUTH", ftpAUTH}, {"CDUP", ftpCDUP},
+        {"CWD",  ftpCWD }, {"DELE", ftpDELE}, {"EPSV", ftpEPSV}, {"FEAT", ftpFEAT},
+        {"HELP", ftpHELP}, {"LIST", ftpLIST}, {"MKD",  ftpMKD }, {"MLSD", ftpMLSD},
+        {"NOOP", ftpNOOP}, {"OPTS", ftpOPTS}, {"PASS", ftpPASS}, {"PASV", ftpPASV},
+        {"PBSZ", ftpPBSZ}, {"PORT", ftpPORT}, {"PROT", ftpPROT}, {"PWD",  ftpPWD },
+        {"QUIT", ftpQUIT}, {"REST", ftpREST}, {"RETR", ftpRETR}, {"RMD",  ftpRMD },
+        {"RNFR", ftpRNFR}, {"RNTO", ftpRNTO}, {"SITE", ftpSITE}, {"SIZE", ftpSIZE},
+        {"STOR", ftpSTOR}, {"SYST", ftpSYST}, {"TYPE", ftpTYPE}, {"USER", ftpUSER}
 };
 
 void *mlsd_thread(pthcontext tctx);
@@ -33,12 +33,6 @@ void *append_thread(pthcontext tctx);
 void *stor_thread(pthcontext tctx);
 void *retr_thread(pthcontext tctx);
 
-/*
- * FTP_PASSCMD_INDEX
- * must be in sync with ftpprocs "PASS" index
- */
-#define FTP_PASSCMD_INDEX   13
-
 #define WORKER_CLEANUP_TIMEOUT_NS   500000000
 #define KEEPALIVE_IDLE_SEC          16
 #define KEEPALIVE_INTERVAL_SEC      16
@@ -46,6 +40,29 @@ void *retr_thread(pthcontext tctx);
 
 unsigned int g_newid = 0, g_threads = 0;
 unsigned long long int g_client_sockets_created = 0, g_client_sockets_closed = 0;
+
+static int ftpcmd_compare(const void *key, const void *entry)
+{
+    const ftproutine_entry *a = (const ftproutine_entry *)key;
+    const ftproutine_entry *b = (const ftproutine_entry *)entry;
+    return strcasecmp(a->name, b->name);
+}
+
+static const ftproutine_entry *ftpcmd_lookup(const char *cmd, size_t cmdlen)
+{
+    ftproutine_entry key;
+    char cmdbuf[8];
+
+    if (cmdlen == 0 || cmdlen >= sizeof(cmdbuf))
+        return NULL;
+
+    memcpy(cmdbuf, cmd, cmdlen);
+    cmdbuf[cmdlen] = 0;
+    key.name = cmdbuf;
+    key.proc = NULL;
+
+    return (const ftproutine_entry *)bsearch(&key, ftpprocs, MAX_CMDS, sizeof(ftpprocs[0]), ftpcmd_compare);
+}
 
 static void cleanup_handler(void *arg)
 {
@@ -107,6 +124,15 @@ int ftp_init_tls_session(gnutls_session_t *session, SOCKET s, int send_status)
     }
 
     *session = nsession;
+    return 1;
+}
+
+static int data_connection_ready(pftp_context context)
+{
+    if (context->mode == MODE_NORMAL && context->data_port == 0)
+        return 0;
+    if (context->mode == MODE_PASSIVE && context->data_socket == INVALID_SOCKET)
+        return 0;
     return 1;
 }
 
@@ -207,6 +233,11 @@ ssize_t writelogentry(pftp_context context, const char *logtext1, const char *lo
     time_t		itm = time(NULL);
     struct tm	ltm;
 
+    if (logtext1 == NULL)
+        logtext1 = "(empty)";
+    if (logtext2 == NULL)
+        logtext2 = "(empty)";
+
     localtime_r(&itm, &ltm);
 
     if (context == NULL)
@@ -296,9 +327,21 @@ void worker_thread_start(pftp_context context, pstartroutine fn)
 ssize_t ftpUSER(pftp_context context, const char *params)
 {
     char text[PATH_MAX];
+    const char *cp;
 
     if ( params == NULL )
         return (int)sendstring(context, error501);
+
+    /* 
+        Defence-in-depth
+        Validate that no control character exists in the username
+        before echoing it into the response   
+    */
+    for (cp = params; *cp != 0; ++cp)
+    {
+        if ((unsigned char)*cp < 0x20)
+            return (int)sendstring(context, error501);
+    }
 
     context->access = FTP_ACCESS_NOT_LOGGED_IN;
 
@@ -383,22 +426,40 @@ ssize_t ftpPORT(pftp_context context, const char *params)
         return sendstring(context, error501);
 
     for (c = 0; c < 4; ++c) {
+        /* Enforce each field starts with digit */
+        if (!(*p >= '0' && *p <= '9'))
+            return sendstring(context, error501);
         b_data_ipv4[c] = (uint8_t)strtoul(p, NULL, 10);
         while ( (*p >= '0') && (*p <= '9') )
             ++p;
-        if ( *p == 0 )
-            break;
-        ++p;
+        if (c < 3) {
+            if ( *p == 0 )
+                break;
+            ++p;
+        }
     }
 
+    if (*p != ',')
+        return sendstring(context, error501);
+    ++p;
+
     for (c = 0; c < 2; ++c) {
+        /* Enforce each field starts with digit */
+        if (!(*p >= '0' && *p <= '9'))
+            return sendstring(context, error501);
         b_data_port[c] = (uint8_t)strtoul(p, NULL, 10);
         while ( (*p >= '0') && (*p <= '9') )
             ++p;
-        if ( *p == 0 )
-            break;
-        ++p;
+        if (c == 0) {
+            /* Explicitly require comma as the delimiter */
+            if ( *p != ',' )
+                return sendstring(context, error501);
+            ++p;
+        }
     }
+
+    if (*p != 0)
+        return sendstring(context, error501);
 
     memcpy(&data_ipv4, b_data_ipv4, sizeof(b_data_ipv4));
     memcpy(&data_port, b_data_port, sizeof(b_data_port));
@@ -622,10 +683,7 @@ ssize_t ftpLIST(pftp_context context, const char *params)
         return sendstring(context, error530);
     if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
         return sendstring(context, error550_t);
-    /* Check if data connection is ready */
-    if (context->mode == MODE_NORMAL && context->data_port == 0)
-        return sendstring(context, error425);
-    if (context->mode == MODE_PASSIVE && context->data_socket == INVALID_SOCKET)
+    if (!data_connection_ready(context))
         return sendstring(context, error425);
 
     if ( params != NULL )
@@ -830,10 +888,7 @@ ssize_t ftpRETR(pftp_context context, const char *params)
         return sendstring(context, error530);
     if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
         return sendstring(context, error550_t);
-    /* Check if data connection is ready */
-    if (context->mode == MODE_NORMAL && context->data_port == 0)
-        return sendstring(context, error425);
-    if (context->mode == MODE_PASSIVE && context->data_socket == INVALID_SOCKET)
+    if (!data_connection_ready(context))
         return sendstring(context, error425);
 
     if ( params == NULL )
@@ -1267,10 +1322,7 @@ ssize_t ftpSTOR(pftp_context context, const char *params)
         return sendstring(context, error501);
     if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
         return sendstring(context, error550_t);
-    /* Check if data connection is ready */
-    if (context->mode == MODE_NORMAL && context->data_port == 0)
-        return sendstring(context, error425);
-    if (context->mode == MODE_PASSIVE && context->data_socket == INVALID_SOCKET)
+    if (!data_connection_ready(context))
         return sendstring(context, error425);
 
     ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
@@ -1377,10 +1429,7 @@ ssize_t ftpAPPE(pftp_context context, const char *params)
         return sendstring(context, error501);
     if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
         return sendstring(context, error550_t);
-    /* Check if data connection is ready */
-    if (context->mode == MODE_NORMAL && context->data_port == 0)
-        return sendstring(context, error425);
-    if (context->mode == MODE_PASSIVE && context->data_socket == INVALID_SOCKET)
+    if (!data_connection_ready(context))
         return sendstring(context, error425);
 
     ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
@@ -1575,11 +1624,7 @@ ssize_t ftpMLSD(pftp_context context, const char *params)
         return sendstring(context, error530);
     if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
         return sendstring(context, error550_t);
-
-    /* Check if data connection is ready */
-    if (context->mode == MODE_NORMAL && context->data_port == 0)
-        return sendstring(context, error425);
-    if (context->mode == MODE_PASSIVE && context->data_socket == INVALID_SOCKET)
+    if (!data_connection_ready(context))
         return sendstring(context, error425);
 
     ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(context->file_name), context->file_name);
@@ -1601,6 +1646,7 @@ ssize_t ftpMLSD(pftp_context context, const char *params)
 int recvcmd(pftp_context context, char *buffer, size_t buffer_size)
 {
     ssize_t	l, p = 0;
+    ssize_t k;
 
     if ( buffer_size < 5 )
         return 0;
@@ -1629,6 +1675,15 @@ int recvcmd(pftp_context context, char *buffer, size_t buffer_size)
             if ( (buffer[p-2] == '\r') && (buffer[p-1] == '\n') )
             {
                 buffer[p-2] = 0;
+                /* Reject commands containing NUL or control characters */
+                for (k = 0; k < p - 2; ++k)
+                {
+                    if ((unsigned char)buffer[k] < 0x20)
+                    {
+                        buffer[0] = 0;
+                        return 0;
+                    }
+                }
                 return 1;
             }
     }
@@ -1641,7 +1696,7 @@ void *ftp_client_thread(SOCKET s)
 {
     ftp_context             ctx __attribute__ ((aligned (16)));
     char                    *cmd, *params, rcvbuf[PATH_MAX];
-    int                     c, cmdno;
+    const ftproutine_entry  *found;
     ssize_t                 rv;
     unsigned int            tn;
     size_t                  i, cmdlen;
@@ -1714,22 +1769,17 @@ void *ftp_client_thread(SOCKET s)
             else
                 params = &rcvbuf[i];
 
-            cmdno = -1;
             rv = 1;
-            for (c=0; c<MAX_CMDS; c++)
-                if (strncasecmp(cmd, ftpprocs[c].name, cmdlen) == 0)
-                {
-                    cmdno = c;
-                    rv = ftpprocs[c].proc(&ctx, params);
-                    break;
-                }
+            found = ftpcmd_lookup(cmd, cmdlen);
+            if (found != NULL)
+                rv = found->proc(&ctx, params);
 
-            if ( cmdno != FTP_PASSCMD_INDEX )
+            if (found == NULL || strcasecmp(found->name, "PASS") != 0)
                 writelogentry(&ctx, " @@ CMD: ", rcvbuf);
             else
                 writelogentry(&ctx, " @@ CMD: ", "PASS ***");
-
-            if ( cmdno == -1 )
+            
+            if (found == NULL)
                 sendstring(&ctx, error500);
 
             if ( rv <= 0 )
