@@ -3,7 +3,7 @@
  *
  *  Created on: Nov 18, 2020
  *
- *  Modified on: Jul 25, 2025
+ *  Modified on: Feb 14, 2026
  *
  *      Author: lightftp
  */
@@ -164,7 +164,7 @@ int ftp_normalize_path(char* path, size_t npath_len, char* npath)
 }
 
 int ftp_effective_path(char *root_path, char *current_path,
-        char *file_path, size_t result_size, char *result)
+        const char *file_path, size_t result_size, char *result)
 {
     char    path[PATH_MAX*2], normalized_path[PATH_MAX];
     int     status;
