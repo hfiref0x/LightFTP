@@ -433,8 +433,9 @@ ssize_t ftpPORT(pftp_context context, const char *params)
         while ( (*p >= '0') && (*p <= '9') )
             ++p;
         if (c < 3) {
-            if ( *p == 0 )
-                break;
+            /* Explicitly require comma as the delimiter */
+            if ( *p != ',' )
+                return sendstring(context, error501);
             ++p;
         }
     }
