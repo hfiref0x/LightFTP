@@ -43,15 +43,6 @@ void *retr_thread(pthcontext tctx);
 unsigned int g_newid = 0, g_threads = 0;
 unsigned long long int g_client_sockets_created = 0, g_client_sockets_closed = 0;
 
-static int require_logged_in(pftp_context context)
-{
-    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN ) {
-        sendstring(context, error530);
-        return 0;
-    }
-    return 1;
-}
-
 static int ftpcmd_compare(const void *key, const void *entry)
 {
     const ftproutine_entry *a = (const ftproutine_entry *)key;
@@ -923,7 +914,7 @@ void *retr_thread(pthcontext tctx)
 
 ssize_t ftpRETR(pftp_context context, const char *params)
 {
-    struct	stat	filestats;
+    struct	stat    filestats;
 
     if (context->access == FTP_ACCESS_NOT_LOGGED_IN)
         return sendstring(context, error530);
