@@ -43,6 +43,15 @@ void *retr_thread(pthcontext tctx);
 unsigned int g_newid = 0, g_threads = 0;
 unsigned long long int g_client_sockets_created = 0, g_client_sockets_closed = 0;
 
+static int require_logged_in(pftp_context context)
+{
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN ) {
+        sendstring(context, error530);
+        return 0;
+    }
+    return 1;
+}
+
 static int ftpcmd_compare(const void *key, const void *entry)
 {
     const ftproutine_entry *a = (const ftproutine_entry *)key;
@@ -953,7 +962,7 @@ ssize_t ftpABOR(pftp_context context, const char *params)
     if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
 
-    writelogentry(context, " ABORT command", NULL);
+    writelogentry(context, " ABOR command", NULL);
     worker_thread_cleanup(context);
     context->busy = __sync_val_compare_and_swap(&context->busy, 1, 0);
     return sendstring(context, success226);
@@ -1160,7 +1169,7 @@ ssize_t ftpPASS(pftp_context context, const char *params)
             return sendstring(context, error530_b);
         } while (0);
 
-        writelogentry(context, " PASS->successful logon", "");
+        writelogentry(context, " PASS: successful logon", "");
     }
     else
         return sendstring(context, error530_r);
@@ -1671,19 +1680,26 @@ ssize_t ftpAUTH(pftp_context context, const char *params)
         return sendstring(context, error504);
 }
 
-ssize_t ftpPBSZ (pftp_context context, const char *params)
+ssize_t ftpPBSZ(pftp_context context, const char *params)
 {
+    const char      *cp;
+
     if ( params == NULL )
         return sendstring(context, error501);
 
     if ( context->tls_session == NULL )
         return sendstring(context, error503);
 
+    for (cp = params; *cp != 0; ++cp) {
+        if ((*cp < '0') || (*cp > '9'))
+            return sendstring(context, error501);
+    }
+
     context->block_size = strtoul(params, NULL, 10);
     return sendstring(context, success200);
 }
 
-ssize_t ftpPROT (pftp_context context, const char *params)
+ssize_t ftpPROT(pftp_context context, const char *params)
 {
     if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
@@ -1711,7 +1727,7 @@ ssize_t ftpPROT (pftp_context context, const char *params)
     }
 }
 
-ssize_t mlsd_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dirent *entry)
+ssize_t mlsd_sub(char *dirname, SOCKET s, gnutls_session_t session, struct dirent *entry)
 {
     char			text[2*PATH_MAX], *entrytype, *sizetype;
     struct stat		filestats;
