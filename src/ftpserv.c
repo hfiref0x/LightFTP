@@ -1442,11 +1442,13 @@ ssize_t ftpMODE(pftp_context context, const char *params)
     {
     case 'S':
     case 's':
+        return sendstring(context, success200);
+
     case 'B':
     case 'b':
     case 'C':
     case 'c':
-        return sendstring(context, error502);
+        return sendstring(context, error504);
 
     default:
         return sendstring(context, error501);
@@ -1465,11 +1467,13 @@ ssize_t ftpSTRU(pftp_context context, const char *params)
     {
     case 'F':
     case 'f':
+        return sendstring(context, success200);
+
     case 'R':
     case 'r':
     case 'P':
     case 'p':
-        return sendstring(context, error502);
+        return sendstring(context, error504);
 
     default:
         return sendstring(context, error501);
