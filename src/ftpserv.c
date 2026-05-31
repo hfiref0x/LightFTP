@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Mar 10, 2026
+ *  Modified on: May 30, 2026
  *
  *      Author: lightftp
  */
@@ -167,7 +167,7 @@ SOCKET create_datasocket(pftp_context context)
         asz = sizeof(laddr);
         client_socket = accept(context->data_socket, (struct sockaddr *)&laddr, &asz);
         close(context->data_socket);
-        context->data_socket = client_socket;
+        context->data_socket = INVALID_SOCKET;
 
         if ( client_socket == INVALID_SOCKET )
             return INVALID_SOCKET;
@@ -420,11 +420,12 @@ ssize_t ftpTYPE(pftp_context context, const char *params)
 
 ssize_t ftpPORT(pftp_context context, const char *params)
 {
-    int			c;
-    in_addr_t   data_ipv4 = 0;
-    uint16_t    data_port = 0;
-    uint8_t     b_data_ipv4[4] = {0}, b_data_port[2] = {0};
-    char		*p = (char *)params;
+    int			    c;
+    in_addr_t       data_ipv4 = 0;
+    uint16_t        data_port = 0;
+    uint8_t         b_data_ipv4[4] = {0}, b_data_port[2] = {0};
+    char		    *p = (char *)params;
+    unsigned long   value;
 
     context->data_ipv4 = 0;
     context->data_port = 0;
@@ -438,7 +439,13 @@ ssize_t ftpPORT(pftp_context context, const char *params)
         /* Enforce each field starts with digit */
         if (!(*p >= '0' && *p <= '9'))
             return sendstring(context, error501);
-        b_data_ipv4[c] = (uint8_t)strtoul(p, NULL, 10);
+
+        /* Validate each field */
+        value = strtoul(p, NULL, 10);
+        if (value > 255)
+            return sendstring(context, error501);
+
+        b_data_ipv4[c] = (uint8_t)value;           
         while ( (*p >= '0') && (*p <= '9') )
             ++p;
         if (c < 3) {
@@ -457,7 +464,13 @@ ssize_t ftpPORT(pftp_context context, const char *params)
         /* Enforce each field starts with digit */
         if (!(*p >= '0' && *p <= '9'))
             return sendstring(context, error501);
-        b_data_port[c] = (uint8_t)strtoul(p, NULL, 10);
+
+        /* Validate each field */
+        value = strtoul(p, NULL, 10);
+        if (value > 255)
+            return sendstring(context, error501);
+
+        b_data_port[c] = (uint8_t)value;
         while ( (*p >= '0') && (*p <= '9') )
             ++p;
         if (c == 0) {
@@ -475,6 +488,8 @@ ssize_t ftpPORT(pftp_context context, const char *params)
     memcpy(&data_port, b_data_port, sizeof(b_data_port));
 
     if ( data_ipv4 != context->client_ipv4 )
+        return sendstring(context, error501);
+    if ( data_port == 0 )
         return sendstring(context, error501);
 
     context->data_ipv4 = data_ipv4;
