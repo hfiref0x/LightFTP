@@ -167,7 +167,7 @@ SOCKET create_datasocket(pftp_context context)
         asz = sizeof(laddr);
         client_socket = accept(context->data_socket, (struct sockaddr *)&laddr, &asz);
         close(context->data_socket);
-        context->data_socket = INVALID_SOCKET;
+        context->data_socket = client_socket;
 
         if ( client_socket == INVALID_SOCKET )
             return INVALID_SOCKET;
