@@ -1,15 +1,15 @@
 /*
- * sha256sum.h
+ *  fcrypt.h
  *
- *  Created on: Jul 25, 2025
+ *  Created on: Jun 12, 2026
  *
- *  Modified on: Jul 25, 2025
+ *  Modified on: Jun 12, 2026
  *
  *      Author: lightftp
  */
 
-#ifndef SHA256SUM_H_
-#define SHA256SUM_H_ 1
+#ifndef FCRYPT_H_
+#define FCRYPT_H_ 1
 
 #include <stdint.h>
 #include <string.h>
@@ -26,4 +26,7 @@ void sha256_init(SHA256_CTX *ctx);
 void sha256_update(SHA256_CTX *ctx, const uint8_t data[], size_t len);
 void sha256_final(SHA256_CTX *ctx, uint8_t hash[]);
 
-#endif /* SHA256SUM_H_ */
+size_t base64encode(const uint8_t *s, size_t s_size, char *b64, size_t b64_size);
+size_t base64decode(const char *b64, uint8_t *data, size_t data_size, size_t *cbfeed);
+
+#endif /* FCRYPT_H_ */

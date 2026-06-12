@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Feb 14, 2026
+ *  Modified on: Jun 12, 2026
  *
  *      Author: lightftp
  */
@@ -11,6 +11,7 @@
 #include "inc/ftpserv.h"
 #include "inc/cfgparse.h"
 #include "inc/x_malloc.h"
+#include "inc/fcrypt.h"
 
 ftp_config   g_cfg;
 int          g_log = -1;
@@ -26,25 +27,134 @@ gnutls_datum_t                      session_keys_storage = {0};
 void ftp_tls_init();
 void ftp_tls_cleanup();
 
+static int read_password_stars(char *buffer, size_t buffer_size)
+{
+	struct termios	oldt, newt;
+	int				ch;
+	size_t			pos = 0;
+
+	if ((buffer == NULL) || (buffer_size < 2))
+		return 0;
+
+	if (tcgetattr(STDIN_FILENO, &oldt) != 0)
+		return 0;
+
+	newt = oldt;
+	newt.c_lflag &= ~(ECHO | ICANON);
+	if (tcsetattr(STDIN_FILENO, TCSANOW, &newt) != 0)
+		return 0;
+
+	memset(buffer, 0, buffer_size);
+
+	while (1)
+	{
+		ch = getc(stdin);
+
+		if ((ch == '\n') || (ch == '\r') || (ch == EOF))
+			break;
+
+		if ((ch == 0x08) || (ch == 0x7f))
+		{
+			if (pos > 0)
+			{
+				--pos;
+				buffer[pos] = 0;
+				printf("\b \b");
+				fflush(stdout);
+			}
+			continue;
+		}
+
+		if ((ch >= 0x20) && (ch < 0x7f))
+		{
+			if (pos < (buffer_size - 1))
+			{
+				buffer[pos++] = (char)ch;
+				printf("*");
+				fflush(stdout);
+			}
+		}
+	}
+
+	printf("\r\n");
+	fflush(stdout);
+
+	tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+	return 1;
+}
+
+size_t get_salt(uint8_t *salt, size_t salt_size)
+{
+    int    file_fd, result;
+
+    file_fd = open("/dev/urandom", O_RDONLY);
+    if (file_fd == -1)
+        return 0;
+    result = read(file_fd, salt, salt_size);
+    close(file_fd);
+    return result;
+}
+
 /* Program entry point */
 int main(int argc, char *argv[])
 {
-	char		*cfg = NULL, *textbuf = NULL, *p;
-	int			c;
+	char		*cfg = NULL, *textbuf = NULL,
+			    *p, userpass[256], base64out[256];
+	int			c, i, use_cli_password = 0;
 	uint32_t	bufsize = 65536;
 	pthread_t	thid;
+	SHA256_CTX  shactx;
+	uint8_t     salt[32], hash[32];
 
 	struct in_addr na;
 
 	if (sizeof (off_t) != 8)
 	{
 		printf("off_t is not 64 bits long");
-		return 0;
+		exit(1);
 	}
 
-	if (argc > 1)
-		cfg = config_init(argv[1]);
-	else
+	for (i = 1; i < argc; ++i)
+	{
+		if (strcmp(argv[i], "-p") == 0)
+		{
+			use_cli_password = 1;
+			continue;
+		}
+
+		if (cfg == NULL)
+			cfg = config_init(argv[i]);
+	}
+
+	if (use_cli_password != 0)
+	{
+		memset(userpass, 0, sizeof(userpass));
+		printf("Enter key password: ");
+		if (!read_password_stars(userpass, sizeof(userpass)))
+		{
+			printf("Error: Failed to read password from keyboard\r\n");
+			exit(1);
+		}
+
+        if (get_salt((uint8_t *)&salt, sizeof(salt)) < sizeof(salt))
+		{
+			printf("Error: Failed to get random salt value\r\n");
+			exit(1);
+		}
+
+        sha256_init(&shactx);
+        sha256_update(&shactx, (uint8_t *)&salt, sizeof(salt));
+        sha256_update(&shactx, (uint8_t *)&userpass, strlen(userpass));
+        sha256_final(&shactx, (uint8_t *)&hash);
+
+        c = base64encode((uint8_t *)&salt, sizeof(salt), (char *)&base64out, sizeof(base64out));
+        base64encode((uint8_t *)&hash, sizeof(hash), (char *)&base64out[c], sizeof(base64out)-c);
+
+		printf("%s\r\n", base64out);
+		exit(1);
+	}
+
+	if (cfg == NULL)
 		cfg = config_init(CONFIG_FILE_NAME);
 
 	while (cfg != NULL)
@@ -138,6 +248,7 @@ int main(int argc, char *argv[])
 		printf("Max users       : %" PRIu64 "\r\n", g_cfg.max_users);
 		printf("PASV port range : %u..%u\r\n", g_cfg.pasv_port_base, g_cfg.pasv_port_max);
 
+		printf("\r\n Use with -p to generate encrypted password\r\n");
 		printf("\r\n TYPE q or Ctrl+C to terminate >\r\n");
 
 		ftp_tls_init();
@@ -157,8 +268,10 @@ int main(int argc, char *argv[])
 		break;
 	}
 
-    if (cfg == NULL)
-        printf("Could not find configuration file\r\n\r\n Usage: fftp [CONFIGFILE]\r\n\r\n");
+	memset(KEYFILE_PASS, 0, sizeof(KEYFILE_PASS));
+
+	if (cfg == NULL)
+        printf("Could not find configuration file\r\n\r\n Usage: fftp [CONFIGFILE] [-p]\r\n\r\n");
     else
         free(cfg);
 
@@ -170,7 +283,7 @@ int main(int argc, char *argv[])
 
     ftp_tls_cleanup();
 
-	exit(2);
+	exit(0);
 }
 
 void ftp_tls_init()

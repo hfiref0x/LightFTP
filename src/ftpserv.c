@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: May 30, 2026
+ *  Modified on: Jun 12, 2026
  *
  *      Author: lightftp
  */
@@ -12,7 +12,7 @@
 #include "inc/cfgparse.h"
 #include "inc/x_malloc.h"
 #include "inc/fspathtools.h"
-#include "inc/sha256sum.h"
+#include "inc/fcrypt.h"
 
 /* Must remain sorted alphabetically by command name, used by bsearch() in ftpcmd_lookup. */
 static const ftproutine_entry ftpprocs[] = {
@@ -1116,11 +1116,14 @@ ssize_t ftpPASV(pftp_context context, const char *params)
     return sendstring(context, text);
 }
 
-ssize_t ftpPASS(pftp_context context, const char *params)
+ssize_t ftpPASS(pftp_context context, const char *userpass)
 {
-    char temptext[PATH_MAX];
+    char        temptext[PATH_MAX], b64text[64];
+    int         pswd_verified = 0;
+	SHA256_CTX  shactx;
+	uint8_t     salt[32], hash[32], phash[32];
 
-    if ( params == NULL )
+    if ( userpass == NULL )
         return sendstring(context, error501);
 
     context->access = FTP_ACCESS_NOT_LOGGED_IN;
@@ -1129,10 +1132,32 @@ ssize_t ftpPASS(pftp_context context, const char *params)
     /*
      * we have login name saved in context->user_name from USER command
      */
-    if (!config_parse(g_cfg.config_file, context->user_name, "pswd", temptext, sizeof(temptext)))
-        return sendstring(context, error530_r);
+    if (config_parse(g_cfg.config_file, context->user_name, "hashpswd", temptext, sizeof(temptext)))
+    {
+        memcpy(&b64text, &temptext, 44);
+        b64text[44] = 0;
+        /* salt */
+        base64decode((const char *)b64text, (uint8_t *)&salt, sizeof(salt), NULL);
+        /* hash */
+        base64decode(&temptext[44], (uint8_t *)&phash, sizeof(phash), NULL);
 
-    if ( (strcmp(temptext, params) == 0) || (temptext[0] == '*') )
+        sha256_init(&shactx);
+        sha256_update(&shactx, (uint8_t *)&salt, sizeof(salt));
+        sha256_update(&shactx, (uint8_t *)userpass, strlen(userpass));
+        sha256_final(&shactx, (uint8_t *)&hash);
+
+        if (memcmp(&phash, &hash, sizeof(hash)) == 0)
+            pswd_verified = 1;
+    }
+    else
+    {
+        if (!config_parse(g_cfg.config_file, context->user_name, "pswd", temptext, sizeof(temptext)))
+            return sendstring(context, error530_r);
+        if ((strcmp(temptext, userpass) == 0) || (temptext[0] == '*'))
+            pswd_verified = 1;
+    }
+
+    if ( pswd_verified )
     {
         memset(context->root_dir, 0, sizeof(context->root_dir));
         memset(temptext, 0, sizeof(temptext));
@@ -1160,13 +1185,14 @@ ssize_t ftpPASS(pftp_context context, const char *params)
             return sendstring(context, error530_b);
         } while (0);
 
-        writelogentry(context, " PASS: successful logon", "");
+        writelogentry(context, " PASS->successful logon", "");
     }
     else
         return sendstring(context, error530_r);
 
     return sendstring(context, success230);
 }
+
 
 ssize_t ftpREST(pftp_context context, const char *params)
 {
