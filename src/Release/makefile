@@ -40,7 +40,7 @@ main-build: fftp
 fftp: $(OBJS) $(USER_OBJS) makefile $(OPTIONAL_TOOL_DEPS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC C Linker'
-	gcc -pthread -o "fftp" $(OBJS) $(USER_OBJS) $(LIBS) -lgnutls
+	$(CC) $(CFLAGS) -pthread -o "fftp" $(OBJS) $(USER_OBJS) $(LIBS) -lgnutls
 	@echo 'Finished building target: $@'
 	@echo ' '
 
