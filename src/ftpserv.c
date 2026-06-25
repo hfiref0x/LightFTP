@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Jun 12, 2026
+ *  Modified on: Jun 22, 2026
  *
  *      Author: lightftp
  */
@@ -1153,7 +1153,7 @@ ssize_t ftpPASS(pftp_context context, const char *userpass)
     {
         if (!config_parse(g_cfg.config_file, context->user_name, "pswd", temptext, sizeof(temptext)))
             return sendstring(context, error530_r);
-        if ((strcmp(temptext, userpass) == 0) || (temptext[0] == '*'))
+        if ((strcmp(temptext, "*") == 0) || (strcmp(temptext, userpass) == 0) )
             pswd_verified = 1;
     }
 
@@ -1185,7 +1185,7 @@ ssize_t ftpPASS(pftp_context context, const char *userpass)
             return sendstring(context, error530_b);
         } while (0);
 
-        writelogentry(context, " PASS->successful logon", "");
+        writelogentry(context, " PASS: successful logon", "");
     }
     else
         return sendstring(context, error530_r);
