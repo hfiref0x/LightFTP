@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Jun 12, 2026
+ *  Modified on: Jul 02, 2026
  *
  *      Author: lightftp
  */
@@ -139,11 +139,11 @@ static int data_connection_ready(pftp_context context)
     return 1;
 }
 
-SOCKET create_datasocket(pftp_context context)
+void create_datasocket(pftp_context context)
 {
-    SOCKET				client_socket = INVALID_SOCKET;
-    struct sockaddr_in	laddr;
-    socklen_t			asz;
+    SOCKET              client_socket = INVALID_SOCKET;
+    struct sockaddr_in  laddr;
+    socklen_t           asz;
 
     memset(&laddr, 0, sizeof(laddr));
 
@@ -152,14 +152,14 @@ SOCKET create_datasocket(pftp_context context)
         client_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         context->data_socket = client_socket;
         if ( client_socket == INVALID_SOCKET )
-            return INVALID_SOCKET;
+            return;
 
         laddr.sin_family = AF_INET;
         laddr.sin_port = context->data_port;
         laddr.sin_addr.s_addr = context->data_ipv4;
         if ( connect(client_socket, (const struct sockaddr *)&laddr, sizeof(laddr)) == -1 ) {
             close(client_socket);
-            return INVALID_SOCKET;
+            context->data_socket = INVALID_SOCKET;
         }
         break;
 
@@ -167,20 +167,29 @@ SOCKET create_datasocket(pftp_context context)
         asz = sizeof(laddr);
         client_socket = accept(context->data_socket, (struct sockaddr *)&laddr, &asz);
         close(context->data_socket);
+
+        if ( client_socket == INVALID_SOCKET ) {
+            context->data_socket = INVALID_SOCKET;
+            return;
+        }
+
+        /* Prevent cross-session data hijack */
+        if ( laddr.sin_addr.s_addr != context->client_ipv4) {
+            close(client_socket);
+            context->data_socket = INVALID_SOCKET;
+            return;
+        }
+
         context->data_socket = client_socket;
-
-        if ( client_socket == INVALID_SOCKET )
-            return INVALID_SOCKET;
-
         context->data_ipv4 = 0;
         context->data_port = 0;
         context->mode = MODE_NORMAL;
         break;
 
     default:
-        return INVALID_SOCKET;
+        context->data_socket = INVALID_SOCKET;
+        return;
     }
-    return client_socket;
 }
 
 ssize_t sendstring(pftp_context context, const char *Buffer)
@@ -633,12 +642,11 @@ ssize_t list_sub (char *dirname, SOCKET s, gnutls_session_t session, struct dire
 
 void *list_thread(pthcontext tctx)
 {
-    volatile SOCKET     client_socket;
-    gnutls_session_t	TLS_datasession;
-    int					fd;
+    gnutls_session_t    TLS_datasession;
+    int                 fd;
     ssize_t             ret;
-    DIR					*pdir;
-    struct dirent		*entry;
+    DIR                 *pdir;
+    struct dirent       *entry;
     pftp_context        context = tctx->context;
 
     pthread_detach(pthread_self());
@@ -646,11 +654,11 @@ void *list_thread(pthcontext tctx)
     ret = 0;
     TLS_datasession = NULL;
 
-    client_socket = create_datasocket(context);
-    while (client_socket != INVALID_SOCKET)
+    create_datasocket(context);
+    while (context->data_socket != INVALID_SOCKET)
     {
         if (context->data_protection_level != 0)
-            if (!ftp_init_tls_session(&TLS_datasession, client_socket, 0))
+            if (!ftp_init_tls_session(&TLS_datasession, context->data_socket, 0))
                 break;
         
         fd = open(tctx->th_file_name, O_DIRECTORY | O_RDONLY | g_cfg.file_open_flags);
@@ -665,13 +673,13 @@ void *list_thread(pthcontext tctx)
 
         while ((entry = readdir(pdir)) != NULL) {
             if (tctx->fn_type == LIST_TYPE_MLSD)
-                ret = mlsd_sub(tctx->th_file_name, client_socket, TLS_datasession, entry);
+                ret = mlsd_sub(tctx->th_file_name, context->data_socket, TLS_datasession, entry);
             else
-                ret = list_sub(tctx->th_file_name, client_socket, TLS_datasession, entry);
+                ret = list_sub(tctx->th_file_name, context->data_socket, TLS_datasession, entry);
             if ( (ret == 0) || (context->worker_thread_abort != 0 ))
                 break;
         }
-/* fd will be closed automatically */
+        /* fd will be closed automatically */
         closedir(pdir);
         break;
     }
@@ -680,7 +688,7 @@ void *list_thread(pthcontext tctx)
 
     writelogentry(context, " LIST/MLSD complete", "");
 
-    if (client_socket == INVALID_SOCKET) {
+    if (context->data_socket == INVALID_SOCKET) {
         sendstring(context, error451);
     }
     else {
@@ -689,7 +697,7 @@ void *list_thread(pthcontext tctx)
         else
             sendstring(context, error426);
 
-        close(client_socket);
+        close(context->data_socket);
         context->data_socket = INVALID_SOCKET;
     }
 
@@ -788,15 +796,14 @@ ssize_t ftpCWD(pftp_context context, const char *params)
 
 void *retr_thread(pthcontext tctx)
 {
-    volatile SOCKET		client_socket;
-    int					sent_ok, file_fd;
-    off_t				offset;
-    ssize_t				sz, sz_total;
-    size_t				buffer_size;
-    char				*buffer;
-    struct timespec		t;
-    signed long long	lt0, lt1, dtx;
-    gnutls_session_t	TLS_datasession;
+    int	                sent_ok, file_fd;
+    off_t               offset;
+    ssize_t	            sz, sz_total;
+    size_t              buffer_size;
+    char                *buffer;
+    struct timespec     t;
+    signed long long    lt0, lt1, dtx;
+    gnutls_session_t    TLS_datasession;
     pftp_context        context = tctx->context;
 
     pthread_detach(pthread_self());
@@ -807,7 +814,6 @@ void *retr_thread(pthcontext tctx)
     sz_total = 0;
     buffer = NULL;
     TLS_datasession = NULL;
-    client_socket = INVALID_SOCKET;
     clock_gettime(CLOCK_MONOTONIC, &t);
     lt0 = t.tv_sec*1000000000ll + t.tv_nsec;
     dtx = t.tv_sec+30;
@@ -815,13 +821,13 @@ void *retr_thread(pthcontext tctx)
     buffer = x_malloc(TRANSMIT_BUFFER_SIZE);
     while (buffer != NULL)
     {
-        client_socket = create_datasocket(context);
-        if (client_socket == INVALID_SOCKET)
+        create_datasocket(context);
+        if (context->data_socket == INVALID_SOCKET)
             break;
 
         if (context->data_protection_level != 0)
         {
-            if (!ftp_init_tls_session(&TLS_datasession, client_socket, 0))
+            if (!ftp_init_tls_session(&TLS_datasession, context->data_socket, 0))
                 break;
 
             buffer_size = gnutls_record_get_max_size(TLS_datasession);
@@ -852,7 +858,7 @@ void *retr_thread(pthcontext tctx)
                 break;
             }
 
-            if (send_auto(client_socket, TLS_datasession, buffer, sz) == sz)
+            if (send_auto(context->data_socket, TLS_datasession, buffer, sz) == sz)
             {
                 sz_total += sz;
             }
@@ -892,7 +898,7 @@ void *retr_thread(pthcontext tctx)
 
     ftp_shutdown_tls_session(TLS_datasession);
 
-    if (client_socket == INVALID_SOCKET) {
+    if (context->data_socket == INVALID_SOCKET) {
         sendstring(context, error451);
     }
     else {
@@ -901,7 +907,7 @@ void *retr_thread(pthcontext tctx)
         else
             sendstring(context, error426);
 
-        close(client_socket);
+        close(context->data_socket);
         context->data_socket = INVALID_SOCKET;
     }
 
@@ -986,11 +992,11 @@ ssize_t ftpDELE(pftp_context context, const char *params)
 
 int pasv(pftp_context context)
 {
-    SOCKET				data_socket;
-    struct sockaddr_in	laddr;
-    int					socketret = -1, result = 0;
-    unsigned long		c, port_count, start_offset, port_value;
-    struct	timespec	rtctime;
+    SOCKET              data_socket;
+    struct sockaddr_in  laddr;
+    int	                socketret = -1, result = 0;
+    unsigned long       c, port_count, start_offset, port_value;
+    struct	timespec    rtctime;
 
     while (1)
     {
@@ -1153,7 +1159,7 @@ ssize_t ftpPASS(pftp_context context, const char *userpass)
     {
         if (!config_parse(g_cfg.config_file, context->user_name, "pswd", temptext, sizeof(temptext)))
             return sendstring(context, error530_r);
-        if ((strcmp(temptext, userpass) == 0) || (temptext[0] == '*'))
+        if ((strcmp(temptext, "*") == 0) || (strcmp(temptext, userpass) == 0) )
             pswd_verified = 1;
     }
 
@@ -1185,7 +1191,7 @@ ssize_t ftpPASS(pftp_context context, const char *userpass)
             return sendstring(context, error530_b);
         } while (0);
 
-        writelogentry(context, " PASS->successful logon", "");
+        writelogentry(context, " PASS: successful logon", "");
     }
     else
         return sendstring(context, error530_r);
@@ -1301,14 +1307,13 @@ ssize_t ftpRMD(pftp_context context, const char *params)
 
 void *stor_thread(pthcontext tctx)
 {
-    volatile SOCKET     client_socket;
-    int					file_fd;
-    ssize_t				wsz, sz, sz_total;
-    size_t				buffer_size;
-    char				*buffer;
-    struct timespec		t;
-    signed long long	lt0, lt1, dtx;
-    gnutls_session_t	TLS_datasession;
+    int                 file_fd;
+    ssize_t             wsz, sz, sz_total;
+    size_t              buffer_size;
+    char                *buffer;
+    struct timespec     t;
+    signed long long    lt0, lt1, dtx;
+    gnutls_session_t    TLS_datasession;
     pftp_context        context = tctx->context;
 
     pthread_detach(pthread_self());
@@ -1318,7 +1323,6 @@ void *stor_thread(pthcontext tctx)
     sz_total = 0;
     buffer = NULL;
     TLS_datasession = NULL;
-    client_socket = INVALID_SOCKET;
     clock_gettime(CLOCK_MONOTONIC, &t);
     lt0 = t.tv_sec*1000000000ll + t.tv_nsec;
     dtx = t.tv_sec+30;
@@ -1326,13 +1330,13 @@ void *stor_thread(pthcontext tctx)
     buffer = x_malloc(TRANSMIT_BUFFER_SIZE);
     while (buffer != NULL)
     {
-        client_socket = create_datasocket(context);
-        if (client_socket == INVALID_SOCKET)
+        create_datasocket(context);
+        if (context->data_socket == INVALID_SOCKET)
             break;
 
         if (context->data_protection_level != 0)
         {
-            if (!ftp_init_tls_session(&TLS_datasession, client_socket, 0))
+            if (!ftp_init_tls_session(&TLS_datasession, context->data_socket, 0))
                 break;
 
             buffer_size = gnutls_record_get_max_size(TLS_datasession);
@@ -1354,7 +1358,7 @@ void *stor_thread(pthcontext tctx)
         lseek(file_fd, 0, SEEK_END);
 
         while ( context->worker_thread_abort == 0 ) {
-            sz = recv_auto(client_socket, TLS_datasession, buffer, buffer_size);
+            sz = recv_auto(context->data_socket, TLS_datasession, buffer, buffer_size);
             if (sz > 0)
             {
                 sz_total += sz;
@@ -1393,7 +1397,7 @@ void *stor_thread(pthcontext tctx)
 
     ftp_shutdown_tls_session(TLS_datasession);
 
-    if (client_socket == INVALID_SOCKET) {
+    if (context->data_socket == INVALID_SOCKET) {
         sendstring(context, error451);
     }
     else {
@@ -1402,7 +1406,7 @@ void *stor_thread(pthcontext tctx)
         else
             sendstring(context, error426);
 
-        close(client_socket);
+        close(context->data_socket);
         context->data_socket = INVALID_SOCKET;
     }
 
