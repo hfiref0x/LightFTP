@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Jul 02, 2026
+ *  Modified on: Sep 19, 2026
  *
  *      Author: lightftp
  */
@@ -1124,10 +1124,8 @@ ssize_t ftpPASV(pftp_context context, const char *params)
 
 ssize_t ftpPASS(pftp_context context, const char *userpass)
 {
-    char        temptext[PATH_MAX], b64text[64];
+    char        temptext[PATH_MAX];
     int         pswd_verified = 0;
-	SHA256_CTX  shactx;
-	uint8_t     salt[32], hash[32], phash[32];
 
     if ( userpass == NULL )
         return sendstring(context, error501);
@@ -1140,19 +1138,7 @@ ssize_t ftpPASS(pftp_context context, const char *userpass)
      */
     if (config_parse(g_cfg.config_file, context->user_name, "hashpswd", temptext, sizeof(temptext)))
     {
-        memcpy(&b64text, &temptext, 44);
-        b64text[44] = 0;
-        /* salt */
-        base64decode((const char *)b64text, (uint8_t *)&salt, sizeof(salt), NULL);
-        /* hash */
-        base64decode(&temptext[44], (uint8_t *)&phash, sizeof(phash), NULL);
-
-        sha256_init(&shactx);
-        sha256_update(&shactx, (uint8_t *)&salt, sizeof(salt));
-        sha256_update(&shactx, (uint8_t *)userpass, strlen(userpass));
-        sha256_final(&shactx, (uint8_t *)&hash);
-
-        if (memcmp(&phash, &hash, sizeof(hash)) == 0)
+        if (password_verify_hash_record(temptext, userpass))
             pswd_verified = 1;
     }
     else
