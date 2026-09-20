@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Jun 12, 2026
+ *  Modified on: Sep 19, 2026
  *
  *      Author: lightftp
  */
@@ -13,25 +13,27 @@
 #include "inc/x_malloc.h"
 #include "inc/fcrypt.h"
 
-ftp_config   g_cfg;
-int          g_log = -1;
+ftp_config g_cfg;
+int g_log = -1;
 
-static char  CAFILE[PATH_MAX], CERTFILE[PATH_MAX], KEYFILE[PATH_MAX], KEYFILE_PASS[256];
-char         GOODBYE_MSG[MSG_MAXLEN];
+static char CAFILE[PATH_MAX], CERTFILE[PATH_MAX], KEYFILE[PATH_MAX], KEYFILE_PASS[256];
+char GOODBYE_MSG[MSG_MAXLEN];
 
-gnutls_dh_params_t					dh_params = NULL;
-gnutls_certificate_credentials_t	x509_cred = NULL;
-gnutls_priority_t					priority_cache = NULL;
-gnutls_datum_t                      session_keys_storage = {0};
+gnutls_dh_params_t dh_params = NULL;
+gnutls_certificate_credentials_t x509_cred = NULL;
+gnutls_priority_t priority_cache = NULL;
+gnutls_datum_t session_keys_storage = {0};
 
-void ftp_tls_init();
+static int gnutls_initialized = 0;
+
+int ftp_tls_init();
 void ftp_tls_cleanup();
 
 static int read_password_stars(char *buffer, size_t buffer_size)
 {
-	struct termios	oldt, newt;
-	int				ch;
-	size_t			pos = 0;
+	struct termios oldt, newt;
+	int ch;
+	size_t pos = 0;
 
 	if ((buffer == NULL) || (buffer_size < 2))
 		return 0;
@@ -83,32 +85,18 @@ static int read_password_stars(char *buffer, size_t buffer_size)
 	return 1;
 }
 
-size_t get_salt(uint8_t *salt, size_t salt_size)
-{
-    int    file_fd, result;
-
-    file_fd = open("/dev/urandom", O_RDONLY);
-    if (file_fd == -1)
-        return 0;
-    result = read(file_fd, salt, salt_size);
-    close(file_fd);
-    return result;
-}
-
 /* Program entry point */
 int main(int argc, char *argv[])
 {
-	char		*cfg = NULL, *textbuf = NULL,
-			    *p, userpass[256], base64out[256];
-	int			c, i, use_cli_password = 0;
-	uint32_t	bufsize = 65536;
-	pthread_t	thid;
-	SHA256_CTX  shactx;
-	uint8_t     salt[32], hash[32];
-
+	char *cfg = NULL, *textbuf = NULL,
+		 *p, userpass[256], password_record[FTP_PASSWORD_RECORD_SIZE];
+	int c, i, use_cli_password = 0;
+	int crypto_initialized = 0;
+	uint32_t bufsize = 65536;
+	pthread_t thid;
 	struct in_addr na;
 
-	if (sizeof (off_t) != 8)
+	if (sizeof(off_t) != 8)
 	{
 		printf("off_t is not 64 bits long");
 		exit(1);
@@ -129,6 +117,8 @@ int main(int argc, char *argv[])
 	if (use_cli_password != 0)
 	{
 		memset(userpass, 0, sizeof(userpass));
+		memset(password_record, 0, sizeof(password_record));
+
 		printf("Enter key password: ");
 		if (!read_password_stars(userpass, sizeof(userpass)))
 		{
@@ -136,22 +126,31 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 
-        if (get_salt((uint8_t *)&salt, sizeof(salt)) < sizeof(salt))
+		if (gnutls_global_init() < 0)
 		{
-			printf("Error: Failed to get random salt value\r\n");
+			gnutls_memset(userpass, 0, sizeof(userpass));
+			printf("Error: Failed to initialize GnuTLS\r\n");
 			exit(1);
 		}
 
-        sha256_init(&shactx);
-        sha256_update(&shactx, (uint8_t *)&salt, sizeof(salt));
-        sha256_update(&shactx, (uint8_t *)&userpass, strlen(userpass));
-        sha256_final(&shactx, (uint8_t *)&hash);
+		crypto_initialized = 1;
 
-        c = base64encode((uint8_t *)&salt, sizeof(salt), (char *)&base64out, sizeof(base64out));
-        base64encode((uint8_t *)&hash, sizeof(hash), (char *)&base64out[c], sizeof(base64out)-c);
+		if (!password_generate_hash_record(userpass, password_record,
+										   sizeof(password_record)))
+		{
+			gnutls_memset(userpass, 0, sizeof(userpass));
+			gnutls_global_deinit();
+			printf("Error: Failed to generate encrypted password\r\n");
+			exit(1);
+		}
 
-		printf("%s\r\n", base64out);
-		exit(1);
+		gnutls_memset(userpass, 0, sizeof(userpass));
+		printf("%s\r\n", password_record);
+
+		if (crypto_initialized != 0)
+			gnutls_global_deinit();
+
+		exit(0);
 	}
 
 	if (cfg == NULL)
@@ -189,10 +188,10 @@ int main(int argc, char *argv[])
 
 		g_cfg.file_open_flags = O_NOFOLLOW;
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "follow_symlinks", textbuf, bufsize))
-        {
-            if (strtoul(textbuf, NULL, 10) != 0)
-                g_cfg.file_open_flags &= ~O_NOFOLLOW;
-        }
+		{
+			if (strtoul(textbuf, NULL, 10) != 0)
+				g_cfg.file_open_flags &= ~O_NOFOLLOW;
+		}
 
 		g_cfg.pasv_port_base = 1024;
 		if (config_parse(cfg, CONFIG_SECTION_NAME, "minport", textbuf, bufsize))
@@ -218,18 +217,24 @@ int main(int argc, char *argv[])
 				printf("Possible errors: 1) path is invalid; 2) file is read only; 3) file is directory; 4) insufficient permissions\r\n");
 				break;
 			}
-
-		} else
+		}
+		else
 			printf("WARNING: logfilepath section is not found in configuration. Logging to file disabled.\r\n");
 
-        if (g_log != -1)
-            lseek(g_log, 0L, SEEK_END);
+		if (g_log != -1)
+			lseek(g_log, 0L, SEEK_END);
+
+		if (!ftp_tls_init())
+		{
+			printf("Error: TLS initialization failed. Server startup aborted.\r\n");
+			break;
+		}
 
 		printf("\r\n    [ LightFTP server v%s ]\r\n\r\n", FTP_VERSION);
 		printf("Log file        : %s\r\n", textbuf);
 
 		p = getcwd(textbuf, bufsize);
-		if (p != NULL )
+		if (p != NULL)
 			printf("Working dir     : %s\r\n", textbuf);
 
 		if (argc > 1)
@@ -251,8 +256,6 @@ int main(int argc, char *argv[])
 		printf("\r\n Use with -p to generate encrypted password\r\n");
 		printf("\r\n TYPE q or Ctrl+C to terminate >\r\n");
 
-		ftp_tls_init();
-
 		thid = (pthread_t)0;
 		if (pthread_create(&thid, NULL, &ftpmain, NULL) != 0)
 		{
@@ -260,7 +263,8 @@ int main(int argc, char *argv[])
 			break;
 		}
 
-		do {
+		do
+		{
 			c = getc(stdin);
 			sleep(1);
 		} while ((c != 'q') && (c != 'Q'));
@@ -271,69 +275,115 @@ int main(int argc, char *argv[])
 	memset(KEYFILE_PASS, 0, sizeof(KEYFILE_PASS));
 
 	if (cfg == NULL)
-        printf("Could not find configuration file\r\n\r\n Usage: fftp [CONFIGFILE] [-p]\r\n\r\n");
-    else
-        free(cfg);
+		printf("Could not find configuration file\r\n\r\n Usage: fftp [CONFIGFILE] [-p]\r\n\r\n");
+	else
+		free(cfg);
 
-    if (g_log != -1)
-        close(g_log);
+	if (g_log != -1)
+		close(g_log);
 
-    if (textbuf != NULL)
-        free(textbuf);
+	if (textbuf != NULL)
+		free(textbuf);
 
-    ftp_tls_cleanup();
+	ftp_tls_cleanup();
 
 	exit(0);
 }
 
-void ftp_tls_init()
+int ftp_tls_init()
 {
-	while (gnutls_global_init() >= 0)
+	int result = GNUTLS_E_SUCCESS;
+
+	do
 	{
-		if (gnutls_certificate_allocate_credentials(&x509_cred) < 0)
-    		break;
 
-    	if (gnutls_certificate_set_x509_trust_file(x509_cred, CAFILE, GNUTLS_X509_FMT_PEM) < 0)
-    		break;
+		result = gnutls_global_init();
+		if (result < 0)
+			break;
 
-    	if (gnutls_certificate_set_x509_key_file2(x509_cred, CERTFILE, KEYFILE, GNUTLS_X509_FMT_PEM, KEYFILE_PASS, 0) < 0)
-    		break;
+		gnutls_initialized = 1;
 
-    	if (gnutls_priority_init(&priority_cache, NULL, NULL) < 0)
-    		break;
+		result = gnutls_certificate_allocate_credentials(&x509_cred);
+		if (result < 0)
+			break;
 
-    	if (gnutls_session_ticket_key_generate(&session_keys_storage) != GNUTLS_E_SUCCESS)
-    	    break;
+		result = gnutls_certificate_set_x509_trust_file(x509_cred, CAFILE,
+														GNUTLS_X509_FMT_PEM);
+		if (result < 0)
+			break;
+
+		result = gnutls_certificate_set_x509_key_file2(x509_cred, CERTFILE, KEYFILE,
+													   GNUTLS_X509_FMT_PEM, KEYFILE_PASS, 0);
+		if (result < 0)
+			break;
+
+		result = gnutls_priority_init(&priority_cache, NULL, NULL);
+		if (result < 0)
+			break;
+
+		result = gnutls_session_ticket_key_generate(&session_keys_storage);
+		if (result < 0)
+			break;
 
 #if GNUTLS_VERSION_NUMBER >= 0x030506
-    	gnutls_certificate_set_known_dh_params(x509_cred, GNUTLS_SEC_PARAM_HIGH);
+		gnutls_certificate_set_known_dh_params(x509_cred, GNUTLS_SEC_PARAM_HIGH);
 #else
-    	gnutls_dh_params_init(&dh_params);
-    	gnutls_dh_params_generate2(dh_params, gnutls_sec_param_to_pk_bits(GNUTLS_PK_DH, GNUTLS_SEC_PARAM_HIGH));
-    	gnutls_certificate_set_dh_params(x509_cred, dh_params);
+		result = gnutls_dh_params_init(&dh_params);
+		if (result < 0)
+			break;
+
+		result = gnutls_dh_params_generate2(dh_params,
+											gnutls_sec_param_to_pk_bits(GNUTLS_PK_DH, GNUTLS_SEC_PARAM_HIGH));
+		if (result < 0)
+			break;
+
+		gnutls_certificate_set_dh_params(x509_cred, dh_params);
 #endif
-    	break;
-    }
+	} while (0);
+
+	if (result < 0)
+	{
+		printf("GnuTLS initialization error: %s\r\n", gnutls_strerror(result));
+		ftp_tls_cleanup();
+		return 0;
+	}
+
+	return 1;
 }
 
 void ftp_tls_cleanup()
 {
 #if GNUTLS_VERSION_NUMBER < 0x030506
-	if ( dh_params != NULL)
+	if (dh_params != NULL)
+	{
 		gnutls_dh_params_deinit(dh_params);
+		dh_params = NULL;
+	}
 #endif
 
-	if ( x509_cred != NULL )
+	if (x509_cred != NULL)
+	{
 		gnutls_certificate_free_credentials(x509_cred);
+		x509_cred = NULL;
+	}
 
-	if ( priority_cache != NULL )
+	if (priority_cache != NULL)
+	{
 		gnutls_priority_deinit(priority_cache);
+		priority_cache = NULL;
+	}
 
 	if (session_keys_storage.data)
 	{
-	    gnutls_memset(session_keys_storage.data, 0, session_keys_storage.size);
-	    gnutls_free(session_keys_storage.data);
+		gnutls_memset(session_keys_storage.data, 0, session_keys_storage.size);
+		gnutls_free(session_keys_storage.data);
+		session_keys_storage.data = NULL;
+		session_keys_storage.size = 0;
 	}
 
-	gnutls_global_deinit();
+	if (gnutls_initialized != 0)
+	{
+		gnutls_global_deinit();
+		gnutls_initialized = 0;
+	}
 }
