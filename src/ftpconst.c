@@ -3,7 +3,7 @@
  *
  *  Created on : May 15, 2020
  *
- *  Modified on: Mar 10, 2026
+ *  Modified on: Sep 20, 2026
  *
  *      Author: lightftp
  */
@@ -16,6 +16,11 @@ const char success211[] =
 		"211-Extensions supported:\r\n PASV\r\n UTF8\r\n TVFS\r\n REST STREAM\r\n "
 		"SIZE\r\n MLSD\r\n AUTH TLS\r\n PBSZ\r\n PROT\r\n EPSV\r\n"
 		"211 End.\r\n";
+
+const char success211_no_tls[] = 
+		"211-Extensions supported:\r\n PASV\r\n UTF8\r\n TVFS\r\n REST STREAM\r\n "
+        "SIZE\r\n MLSD\r\n EPSV\r\n"
+        "211 End.\r\n";
 
 const char success214[] =
 		"214-The following commands are recognized.\r\n"
