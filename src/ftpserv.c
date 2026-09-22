@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Sep 19, 2026
+ *  Modified on: Sep 20, 2026
  *
  *      Author: lightftp
  */
@@ -40,8 +40,23 @@ void *retr_thread(pthcontext tctx);
 #define KEEPALIVE_INTERVAL_SEC      16
 #define KEEPALIVE_PROBE_COUNT       8
 
-unsigned int g_newid = 0, g_threads = 0;
+uint64_t g_threads = 0;
+unsigned int g_newid = 0;
 unsigned long long int g_client_sockets_created = 0, g_client_sockets_closed = 0;
+
+static int reserve_client_slot(void)
+{
+    uint64_t    current;
+
+    do {
+        current = __sync_fetch_and_add(&g_threads, 0);
+
+        if (current >= g_cfg.max_users)
+            return 0;
+    } while (__sync_val_compare_and_swap(&g_threads, current, current + 1) != current);
+
+    return 1;
+}
 
 static int ftpcmd_compare(const void *key, const void *entry)
 {
@@ -1560,7 +1575,11 @@ ssize_t ftpSITE(pftp_context context, const char *params)
 ssize_t ftpFEAT(pftp_context context, const char *params)
 {
 	__attribute__((unused)) const char *un = params;
-    return sendstring(context, success211);
+
+	if (g_tls_available == 0)
+		return sendstring(context, success211_no_tls);
+
+	return sendstring(context, success211);
 }
 
 void *append_thread(pthcontext tctx)
@@ -1679,6 +1698,9 @@ ssize_t ftpAUTH(pftp_context context, const char *params)
 
     if ( strcasecmp(params, "TLS") == 0 )
     {
+        if (g_tls_available == 0)
+			return sendstring(context, error502);
+
         /* ftp_init_tls_session will send a status reply */
         ftp_init_tls_session(&context->tls_session, context->control_socket, 1);
         return 1;
@@ -1693,6 +1715,9 @@ ssize_t ftpPBSZ(pftp_context context, const char *params)
 
     if ( params == NULL )
         return sendstring(context, error501);
+
+    if (g_tls_available == 0)
+		return sendstring(context, error502);    
 
     if ( context->tls_session == NULL )
         return sendstring(context, error503);
@@ -1713,6 +1738,9 @@ ssize_t ftpPROT(pftp_context context, const char *params)
 
     if ( params == NULL )
         return sendstring(context, error501);
+
+   	if (g_tls_available == 0)
+		return sendstring(context, error502);
 
     if ( context->tls_session == NULL )
         return sendstring(context, error503);
@@ -1875,7 +1903,7 @@ void *ftp_client_thread(SOCKET s)
     char                    *cmd, *params, rcvbuf[PATH_MAX];
     const ftproutine_entry  *found;
     ssize_t                 rv;
-    unsigned int            tn;
+    uint64_t                tn;
     size_t                  i, cmdlen;
     socklen_t               asz;
     struct sockaddr_in      laddr;
@@ -1888,8 +1916,10 @@ void *ftp_client_thread(SOCKET s)
     ctx.access = FTP_ACCESS_NOT_LOGGED_IN;
     ctx.control_socket = s;
     ctx.session_id = __sync_add_and_fetch(&g_newid, 1);
-    tn = __sync_add_and_fetch(&g_threads, 1);
-    snprintf(rcvbuf, sizeof(rcvbuf), "<- New thread. Thread counter g_threads=%i", tn);
+       
+    tn = __sync_fetch_and_add(&g_threads, 0);
+    snprintf(rcvbuf, sizeof(rcvbuf), "<- New thread. Thread counter g_threads=%" PRIu64, tn);
+
     writelogentry(&ctx, rcvbuf, "");
 
     memset(&laddr, 0, sizeof(laddr));
@@ -1982,7 +2012,7 @@ void *ftp_client_thread(SOCKET s)
     close(ctx.control_socket);
     __sync_add_and_fetch(&g_client_sockets_closed, 1);
     tn = __sync_sub_and_fetch(&g_threads, 1);
-    snprintf(rcvbuf, sizeof(rcvbuf), "<- Thread exit. Thread counter g_threads=%i", tn);
+    snprintf(rcvbuf, sizeof(rcvbuf), "<- Thread exit. Thread counter g_threads=%" PRIu64, tn);
     writelogentry(&ctx, rcvbuf, "");
 
     return NULL;
@@ -2055,14 +2085,16 @@ void *ftpmain(void *p)
         __sync_add_and_fetch(&g_client_sockets_created, 1);
 
         rv = -1;
-        if (g_threads < g_cfg.max_users)
+        if (reserve_client_slot())
         {
             if (g_cfg.enable_keepalive != 0)
                 socket_set_keepalive(client_socket);
 
             rv = pthread_create(&th, NULL, (void * (*)(void *))ftp_client_thread, (void *)client_socket);
-            if (rv != 0)
+            if (rv != 0) {
+                __sync_sub_and_fetch(&g_threads, 1);
                 sendstring_plaintext(client_socket, error451);
+            }
         }
         else
         {
@@ -2076,8 +2108,8 @@ void *ftpmain(void *p)
         }
 
         snprintf(text, sizeof(text),
-                "MAIN LOOP stats: g_threads=%i, g_cfg.max_users=%" PRIu64 ", g_client_sockets_created=%llu, g_client_sockets_closed=%llu\r\n",
-                g_threads, g_cfg.max_users, g_client_sockets_created, g_client_sockets_closed);
+                "MAIN LOOP stats: g_threads=%" PRIu64 ", g_cfg.max_users=%" PRIu64 ", g_client_sockets_created=%llu, g_client_sockets_closed=%llu\r\n",
+                 g_threads, g_cfg.max_users, g_client_sockets_created, g_client_sockets_closed);
 
         writelogentry(NULL, text, "");
     }

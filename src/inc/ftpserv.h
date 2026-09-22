@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Mar 10, 2026
+ *  Modified on: Sep 20, 2026
  *
  *      Author: lightftp
  */
@@ -23,6 +23,7 @@
 #define _LARGEFILE64_SOURCE
 #endif
 
+#include <errno.h>
 #include <time.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -162,6 +163,7 @@ extern char         GOODBYE_MSG[MSG_MAXLEN];
 extern gnutls_certificate_credentials_t     x509_cred;
 extern gnutls_priority_t                    priority_cache;
 extern gnutls_datum_t                       session_keys_storage;
+extern int                                  g_tls_available;
 
 #define FTP_COMMAND(cmdname)    ssize_t cmdname(pftp_context context, const char* params)
 extern const char               shortmonths[12][4];
@@ -206,6 +208,7 @@ FTP_COMMAND(ftpSTRU);
 #define success200_2   "200 Type set to I.\r\n"
 
 extern const char success211[];
+extern const char success211_no_tls[];
 extern const char success214[];
 
 #define success215     "215 UNIX Type: L8\r\n"
