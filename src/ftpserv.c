@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Sep 20, 2026
+ *  Modified on: Sep 23, 2026
  *
  *      Author: lightftp
  */
@@ -1219,7 +1219,12 @@ ssize_t ftpREST(pftp_context context, const char *params)
             return sendstring(context, error501);
     }
 
+    errno = 0;
     value = strtoull(params, NULL, 10);
+
+    if (errno == ERANGE || value > (unsigned long long)LLONG_MAX)
+        return sendstring(context, error501);
+
     context->rest_point = (off_t)value;
 
     snprintf(text, sizeof(text),
