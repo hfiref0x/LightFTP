@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Sep 23, 2026
+ *  Modified on: Sep 26, 2026
  *
  *      Author: lightftp
  */
@@ -1314,6 +1314,7 @@ ssize_t ftpRMD(pftp_context context, const char *params)
 void *stor_thread(pthcontext tctx)
 {
     int                 file_fd;
+    int                 file_open_errno;
     ssize_t             wsz, sz, sz_total;
     size_t              buffer_size;
     char                *buffer;
@@ -1321,12 +1322,15 @@ void *stor_thread(pthcontext tctx)
     signed long long    lt0, lt1, dtx;
     gnutls_session_t    TLS_datasession;
     pftp_context        context = tctx->context;
+    xfer_result         xr;
 
     pthread_detach(pthread_self());
     pthread_cleanup_push(cleanup_handler, tctx);
 
     file_fd = -1;
     sz_total = 0;
+    xr = XFER_OK;
+    file_open_errno = 0; 
     buffer = NULL;
     TLS_datasession = NULL;
     clock_gettime(CLOCK_MONOTONIC, &t);
@@ -1357,23 +1361,41 @@ void *stor_thread(pthcontext tctx)
         else
             file_fd = open(tctx->th_file_name, O_CREAT | O_RDWR | O_TRUNC | g_cfg.file_open_flags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 
-        context->file_fd = file_fd;
         if (file_fd == -1)
+            file_open_errno = errno; /* capture errno before anything else can touch it */
+
+        context->file_fd = file_fd;
+        if (file_fd == -1) {
+            xr = XFER_NO_FILE;
             break;
+        }
 
-        lseek(file_fd, 0, SEEK_END);
+        if (lseek(file_fd, 0, SEEK_END) == (off_t)-1)
+        {
+            xr = XFER_SEEK_FAIL;
+            break;
+        }
 
-        while ( context->worker_thread_abort == 0 ) {
+        while (context->worker_thread_abort == 0)
+        {
             sz = recv_auto(context->data_socket, TLS_datasession, buffer, buffer_size);
             if (sz > 0)
             {
                 sz_total += sz;
                 wsz = write(file_fd, buffer, (size_t)sz);
                 if (wsz != sz)
+                {
+                    xr = XFER_WRITE_FAIL;
                     break;
+                }
+            }
+            else if (sz < 0) /* socket or TLS-layer error */
+            { 
+                xr = XFER_RECV_FAIL;
+                break;
             }
             else
-                break;
+                break; /* EOF, normal completion */
         }
 
         /* calculating performance */
@@ -1407,10 +1429,30 @@ void *stor_thread(pthcontext tctx)
         sendstring(context, error451);
     }
     else {
-        if (context->worker_thread_abort == 0)
-            sendstring(context, success226);
-        else
+
+        /* reply appropriate status */
+        switch (xr)
+        {
+        case XFER_NO_FILE:
+            sendstring(context, (file_open_errno == EACCES) ? error550_r : error550);
+            break;
+        case XFER_SEEK_FAIL:
+            sendstring(context, error451);
+            break;
+        case XFER_WRITE_FAIL:
+            sendstring(context, error452);
+            break;
+        case XFER_RECV_FAIL:
             sendstring(context, error426);
+            break;
+        case XFER_OK:
+        default:
+            if (context->worker_thread_abort == 0)
+                sendstring(context, success226);
+            else
+                sendstring(context, error426);
+            break;
+        }
 
         close(context->data_socket);
         context->data_socket = INVALID_SOCKET;
@@ -1581,8 +1623,9 @@ ssize_t ftpFEAT(pftp_context context, const char *params)
 {
 	__attribute__((unused)) const char *un = params;
 
-	if (g_tls_available == 0)
-		return sendstring(context, success211_no_tls);
+	if (g_tls_available == 0) {
+        return sendstring(context, success211_no_tls);
+    }
 
 	return sendstring(context, success211);
 }
@@ -1703,8 +1746,9 @@ ssize_t ftpAUTH(pftp_context context, const char *params)
 
     if ( strcasecmp(params, "TLS") == 0 )
     {
-        if (g_tls_available == 0)
-			return sendstring(context, error502);
+        if (g_tls_available == 0) {
+            return sendstring(context, error502);
+        }
 
         /* ftp_init_tls_session will send a status reply */
         ftp_init_tls_session(&context->tls_session, context->control_socket, 1);
@@ -1718,14 +1762,18 @@ ssize_t ftpPBSZ(pftp_context context, const char *params)
 {
     const char      *cp;
 
-    if ( params == NULL )
+    if ( params == NULL ) {
         return sendstring(context, error501);
+    }
 
     if (g_tls_available == 0)
-		return sendstring(context, error502);    
+    {
+        return sendstring(context, error502);
+    }
 
-    if ( context->tls_session == NULL )
+    if ( context->tls_session == NULL ) {
         return sendstring(context, error503);
+    }
 
     for (cp = params; *cp != 0; ++cp) {
         if ((*cp < '0') || (*cp > '9'))
@@ -1738,17 +1786,21 @@ ssize_t ftpPBSZ(pftp_context context, const char *params)
 
 ssize_t ftpPROT(pftp_context context, const char *params)
 {
-    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
+    if ( context->access == FTP_ACCESS_NOT_LOGGED_IN ) {
         return sendstring(context, error530);
+    }
 
-    if ( params == NULL )
+    if ( params == NULL ) {
         return sendstring(context, error501);
+    }
 
-   	if (g_tls_available == 0)
-		return sendstring(context, error502);
+   	if (g_tls_available == 0) {
+        return sendstring(context, error502);
+    }
 
-    if ( context->tls_session == NULL )
+    if ( context->tls_session == NULL ) {
         return sendstring(context, error503);
+    }
 
     switch (*params)
     {
@@ -2095,7 +2147,7 @@ void *ftpmain(void *p)
             if (g_cfg.enable_keepalive != 0)
                 socket_set_keepalive(client_socket);
 
-            rv = pthread_create(&th, NULL, (void * (*)(void *))ftp_client_thread, (void *)client_socket);
+            rv = pthread_create(&th, NULL, (void * (*)(void *))ftp_client_thread, (void *)(intptr_t)client_socket);
             if (rv != 0) {
                 __sync_sub_and_fetch(&g_threads, 1);
                 sendstring_plaintext(client_socket, error451);

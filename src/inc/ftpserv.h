@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Sep 20, 2026
+ *  Modified on: Sep 26, 2026
  *
  *      Author: lightftp
  */
@@ -60,7 +60,7 @@
 #endif
 #endif
 
-typedef struct _ftp_config {
+typedef struct {
     char*           config_file;
     uint64_t        max_users;
     uint64_t        enable_keepalive;
@@ -97,14 +97,14 @@ typedef struct _ftp_config {
 
 #define TRANSMIT_BUFFER_SIZE    65536
 
-typedef struct _session_stats {
+typedef struct {
     uint64_t    data_rx;
     uint64_t    data_tx;
     uint64_t    files_rx;
     uint64_t    files_tx;
 } session_stats, *psession_stats;
 
-typedef struct _ftp_context {
+typedef struct {
     int                 busy;
     SOCKET              control_socket;
     SOCKET              data_socket;
@@ -140,7 +140,7 @@ typedef struct _ftp_context {
 #define STOR_TYPE_RECREATE_TRUNC  0
 #define STOR_TYPE_APPEND  1
 
-typedef struct _thcontext {
+typedef struct {
     pftp_context  context;
     char          th_file_name[2*PATH_MAX];
     int           fn_type;
@@ -148,12 +148,20 @@ typedef struct _thcontext {
 
 typedef ssize_t (*ftproutine) (pftp_context context, const char* params);
 
-typedef struct _ftproutine_entry {
+typedef struct {
     const char* name;
     ftproutine  proc;
 } ftproutine_entry, *pftproutine_entry;
 
 typedef void * (*pstartroutine)(pthcontext);
+
+typedef enum {
+    XFER_OK = 0,
+    XFER_NO_FILE,
+    XFER_SEEK_FAIL,
+    XFER_WRITE_FAIL,
+    XFER_RECV_FAIL
+} xfer_result;
 
 extern ftp_config   g_cfg;
 extern int          g_log;
@@ -223,6 +231,7 @@ extern const char success214[];
 #define error426       "426 Connection closed; transfer aborted.\r\n"
 #define error450       "450 Requested file action not taken.\r\n"
 #define error451       "451 Requested action aborted. Local error in processing.\r\n"
+#define error452       "452 Requested action not taken. Insufficient storage space in system.\r\n"
 #define error500       "500 Syntax error, command unrecognized.\r\n"
 #define error500_auth  "500 AUTH unsuccessful.\r\n"
 #define error501       "501 Syntax error in parameters or arguments.\r\n"
