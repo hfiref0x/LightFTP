@@ -3,7 +3,7 @@
  *
  *  Created on: Nov 18, 2020
  *
- *  Modified on: Feb 14, 2026
+ *  Modified on: Sep 28, 2026
  *
  *      Author: lightftp
  */
@@ -177,7 +177,7 @@ int ftp_effective_path(char *root_path, char *current_path,
 
     if (*file_path == '/')
     {
-        status = ftp_normalize_path(file_path, PATH_MAX, normalized_path);
+        status = ftp_normalize_path((char*)file_path, PATH_MAX, normalized_path);
     }
     else
     {
