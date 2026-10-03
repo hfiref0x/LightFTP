@@ -784,7 +784,7 @@ ssize_t ftpCDUP(pftp_context context, const char *params)
 ssize_t ftpCWD(pftp_context context, const char *params)
 {
     struct	stat filestats;
-    char    new_dir[2*PATH_MAX];
+    char    new_dir[PATH_MAX];
 
     if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
@@ -1954,9 +1954,10 @@ int recvcmd(pftp_context context, char *buffer, size_t buffer_size)
     return 0;
 }
 
-void *ftp_client_thread(SOCKET s)
+void *ftp_client_thread(void *arg)
 {
     ftp_context             ctx __attribute__ ((aligned (16)));
+    SOCKET                  s = (SOCKET)(intptr_t)arg;
     char                    *cmd, *params, rcvbuf[PATH_MAX];
     const ftproutine_entry  *found;
     ssize_t                 rv;
@@ -2147,7 +2148,7 @@ void *ftpmain(void *p)
             if (g_cfg.enable_keepalive != 0)
                 socket_set_keepalive(client_socket);
 
-            rv = pthread_create(&th, NULL, (void * (*)(void *))ftp_client_thread, (void *)(intptr_t)client_socket);
+            rv = pthread_create(&th, NULL, ftp_client_thread, (void *)(intptr_t)client_socket);
             if (rv != 0) {
                 __sync_sub_and_fetch(&g_threads, 1);
                 sendstring_plaintext(client_socket, error451);

@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Feb 14, 2026
+ *  Modified on: Sep 29, 2026
  *
  *      Author: lightftp
  */
@@ -14,7 +14,7 @@
 #include <fcntl.h>
 #include "inc/x_malloc.h"
 
-char *skip_comments_and_blanks(char *p)
+static const char *skip_comments_and_blanks(const char *p)
 {
 	while (*p != 0) {
 
@@ -67,7 +67,7 @@ int config_parse(
     
     while (*p) {
         /* Skip whitespace and comments */
-        p = skip_comments_and_blanks((char *)p);
+        p = skip_comments_and_blanks(p);
         
         /* End of config reached */
         if (*p == 0)
