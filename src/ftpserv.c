@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Sep 26, 2026
+ *  Modified on: Oct 02, 2026
  *
  *      Author: lightftp
  */
@@ -419,6 +419,9 @@ ssize_t ftpTYPE(pftp_context context, const char *params)
         return sendstring(context, error530);
 
     if (params == NULL)
+        return sendstring(context, error501);
+
+    if (params[1] != 0)
         return sendstring(context, error501);
 
     switch (*params)
