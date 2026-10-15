@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Oct 02, 2026
+ *  Modified on: Oct 14, 2026
  *
  *      Author: lightftp
  */
@@ -142,6 +142,24 @@ int ftp_init_tls_session(gnutls_session_t *session, SOCKET s, int send_status)
     }
 
     *session = nsession;
+    return 1;
+}
+
+/*
+ * Builds real path and, unless follow_symlinks is enabled, refuses paths
+ * that go through a symbolic link: O_NOFOLLOW checks the last component only.
+ */
+static int ftp_resolve_path(pftp_context context, const char *params, size_t result_size, char *result)
+{
+    if (!ftp_effective_path(context->root_dir, context->current_dir, 
+        params, result_size, result))
+    {
+        return 0;
+    }
+
+    if ((g_cfg.file_open_flags & O_NOFOLLOW) != 0) {
+        return ftp_path_has_no_symlinks(context->root_dir, result);
+    }
     return 1;
 }
 
@@ -743,7 +761,7 @@ ssize_t ftpLIST(pftp_context context, const char *params)
             params = NULL;
     }
 
-    if (!ftp_effective_path(context->root_dir, context->current_dir, params,
+    if (!ftp_resolve_path(context, params, 
         sizeof(context->file_name), context->file_name))
     {
         return sendstring(context, error550);
@@ -795,8 +813,11 @@ ssize_t ftpCWD(pftp_context context, const char *params)
     if ( params == NULL )
         return sendstring(context, error501);
 
-    if (!ftp_effective_path(context->root_dir, context->current_dir, params, sizeof(new_dir), new_dir))
+    if (!ftp_resolve_path(context, params, 
+        sizeof(new_dir), new_dir))
+    {
         return sendstring(context, error550);
+    }
 
     if ( stat(new_dir, &filestats) == 0 )
         if ( S_ISDIR(filestats.st_mode) )
@@ -950,7 +971,7 @@ ssize_t ftpRETR(pftp_context context, const char *params)
     if ( params == NULL )
         return sendstring(context, error501);
 
-    if (!ftp_effective_path(context->root_dir, context->current_dir, params,
+    if (!ftp_resolve_path(context, params, 
         sizeof(context->file_name), context->file_name))
     {
         return sendstring(context, error550);
@@ -992,10 +1013,10 @@ ssize_t ftpDELE(pftp_context context, const char *params)
     if ( params == NULL )
         return sendstring(context, error501);
 
-    if (!ftp_effective_path(context->root_dir, context->current_dir, params, 
+    if (!ftp_resolve_path(context, params,
         sizeof(context->file_name), context->file_name))
     {
-            return sendstring(context, error550);
+        return sendstring(context, error550);
     }
 
     if ( unlink(context->file_name) == 0 ) {
@@ -1247,7 +1268,7 @@ ssize_t ftpSIZE(pftp_context context, const char *params)
     if ( params == NULL )
         return sendstring(context, error501);
 
-    if (!ftp_effective_path(context->root_dir, context->current_dir, params, 
+    if (!ftp_resolve_path(context, params, 
         sizeof(context->file_name), context->file_name))
     {
         return sendstring(context, error550);
@@ -1273,7 +1294,7 @@ ssize_t ftpMKD(pftp_context context, const char *params)
     if ( params == NULL )
         return sendstring(context, error501);
 
-    if (!ftp_effective_path(context->root_dir, context->current_dir, params, 
+    if (!ftp_resolve_path(context, params, 
         sizeof(context->file_name), context->file_name))
     {
         return sendstring(context, error550);
@@ -1298,7 +1319,7 @@ ssize_t ftpRMD(pftp_context context, const char *params)
     if ( params == NULL )
         return sendstring(context, error501);
 
-    if (!ftp_effective_path(context->root_dir, context->current_dir, params, 
+    if (!ftp_resolve_path(context, params, 
         sizeof(context->file_name), context->file_name))
     {
         return sendstring(context, error550);
@@ -1483,7 +1504,7 @@ ssize_t ftpSTOR(pftp_context context, const char *params)
     if (!data_connection_ready(context))
         return sendstring(context, error425);
 
-    if (!ftp_effective_path(context->root_dir, context->current_dir, params, 
+    if (!ftp_resolve_path(context, params, 
         sizeof(context->file_name), context->file_name))
     {
         return sendstring(context, error550);
@@ -1594,7 +1615,7 @@ ssize_t parseCHMOD(pftp_context context, const char* params)
     while (*params == ' ')
         ++params;
 
-    if (!ftp_effective_path(context->root_dir, context->current_dir, params, 
+    if (!ftp_resolve_path(context, params, 
         sizeof(context->file_name), context->file_name))
     {
         return 0;
@@ -1654,7 +1675,7 @@ ssize_t ftpAPPE(pftp_context context, const char *params)
     if (!data_connection_ready(context))
         return sendstring(context, error425);
 
-    if (!ftp_effective_path(context->root_dir, context->current_dir, params, 
+    if (!ftp_resolve_path(context, params, 
         sizeof(context->file_name), context->file_name))
     {
         return sendstring(context, error550);
@@ -1687,7 +1708,7 @@ ssize_t ftpRNFR(pftp_context context, const char *params)
     if ( params == NULL )
         return sendstring(context, error501);
 
-    if (!ftp_effective_path(context->root_dir, context->current_dir, params, 
+    if (!ftp_resolve_path(context, params, 
         sizeof(context->rn_from), context->rn_from))
     {
         return sendstring(context, error550);
@@ -1713,7 +1734,7 @@ ssize_t ftpRNTO(pftp_context context, const char *params)
     if ( params == NULL )
         return sendstring(context, error501);
 
-    if (!ftp_effective_path(context->root_dir, context->current_dir, params, 
+    if (!ftp_resolve_path(context, params, 
         sizeof(context->file_name), context->file_name))
     {
         memset(&context->rn_from, 0, sizeof(context->rn_from));
@@ -1888,7 +1909,7 @@ ssize_t ftpMLSD(pftp_context context, const char *params)
     if (!data_connection_ready(context))
         return sendstring(context, error425);
 
-    if (!ftp_effective_path(context->root_dir, context->current_dir, params, 
+    if (!ftp_resolve_path(context, params, 
         sizeof(context->file_name), context->file_name))
     {
         return sendstring(context, error550);

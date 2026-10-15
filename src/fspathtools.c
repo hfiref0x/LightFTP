@@ -3,7 +3,7 @@
  *
  *  Created on: Nov 18, 2020
  *
- *  Modified on: Sep 28, 2026
+ *  Modified on: Oct 14, 2026
  *
  *      Author: lightftp
  */
@@ -12,25 +12,28 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/stat.h>
 
 #include "inc/x_malloc.h"
 
 char *filepath(char *s)
 {
-    char    *p = s;
+    char *p = s;
 
     if (*s == 0)
         return s;
-/*
- * leave root directory sign untouched
- */
+    /*
+     * leave root directory sign untouched
+     */
     if (*s == '/')
     {
         ++s;
         ++p;
     }
 
-    while (*s != 0) {
+    while (*s != 0)
+    {
         if (*s == '/')
             p = s;
         ++s;
@@ -41,11 +44,12 @@ char *filepath(char *s)
     return p;
 }
 
-typedef struct _ftp_path_node {
-    char                    *value;
-    size_t                  length;
-    struct _ftp_path_node   *next;
-    struct _ftp_path_node   *prev;
+typedef struct _ftp_path_node
+{
+    char *value;
+    size_t length;
+    struct _ftp_path_node *next;
+    struct _ftp_path_node *prev;
 } ftp_path_node, *pftp_path_node;
 
 /*
@@ -53,12 +57,12 @@ typedef struct _ftp_path_node {
     Removes garbage like "/", "///" or "." etc. and correctly resolves ".."
 */
 
-int ftp_normalize_path(char* path, size_t npath_len, char* npath)
+int ftp_normalize_path(char *path, size_t npath_len, char *npath)
 {
-    char* p0;
-    size_t          node_len;
-    int             status = 1;
-    pftp_path_node  nodes = NULL, newnode;
+    char *p0;
+    size_t node_len;
+    int status = 1;
+    pftp_path_node nodes = NULL, newnode;
 
     if ((path == NULL) || (npath == NULL) || (npath_len < 2))
         return 0;
@@ -164,11 +168,11 @@ int ftp_normalize_path(char* path, size_t npath_len, char* npath)
 }
 
 int ftp_effective_path(char *root_path, char *current_path,
-        const char *file_path, size_t result_size, char *result)
+                       const char *file_path, size_t result_size, char *result)
 {
-    char    path[PATH_MAX*2], normalized_path[PATH_MAX];
-    int     status;
-    size_t  len;
+    char path[PATH_MAX * 2], normalized_path[PATH_MAX];
+    int status;
+    size_t len;
 
     memset(result, 0, result_size);
 
@@ -177,27 +181,97 @@ int ftp_effective_path(char *root_path, char *current_path,
 
     if (*file_path == '/')
     {
-        status = ftp_normalize_path((char*)file_path, PATH_MAX, normalized_path);
+        status = ftp_normalize_path((char *)file_path, PATH_MAX, normalized_path);
     }
     else
     {
-        snprintf(path, PATH_MAX*2, "%s/%s", current_path, file_path);
+        snprintf(path, PATH_MAX * 2, "%s/%s", current_path, file_path);
         status = ftp_normalize_path(path, PATH_MAX, normalized_path);
     }
 
     if (status == 0)
         return 0;
 
-    snprintf(path, PATH_MAX*2, "%s/%s", root_path, normalized_path);
+    snprintf(path, PATH_MAX * 2, "%s/%s", root_path, normalized_path);
     status = ftp_normalize_path(path, result_size, result);
 
     /* delete last slash */
     len = strlen(result);
     if (len >= 2)
     {
-        if (result[len-1] == '/')
-            result[len-1] = '\0';
+        if (result[len - 1] == '/')
+            result[len - 1] = '\0';
     }
 
     return status;
+}
+
+/*
+    Symlink check routine:
+    Walks every component of path that lies below root_path and fails if any
+    of them is a symbolic link, including the last one. Both strings must be
+    already normalized by ftp_effective_path. Components that do not exist
+    cannot be links, so the walk stops there successfully.
+    root_path itself is administrator configuration and is trusted as is.
+*/
+int ftp_path_has_no_symlinks(const char *root_path, const char *path)
+{
+    char nroot[PATH_MAX], walk[PATH_MAX];
+    char *p, *end;
+    size_t rlen, plen;
+    struct stat filestats;
+
+    if ((root_path == NULL) || (path == NULL))
+        return 0;
+
+    if (!ftp_normalize_path((char *)root_path, sizeof(nroot), nroot))
+        return 0;
+
+    /* drop trailing slash left by normalization, keep single "/" */
+    rlen = strlen(nroot);
+    if ((rlen > 1) && (nroot[rlen - 1] == '/'))
+        nroot[--rlen] = '\0';
+
+    plen = strlen(path);
+    if ((plen < rlen) || (plen >= sizeof(walk)))
+        return 0;
+
+    if (strncmp(path, nroot, rlen) != 0)
+        return 0;
+
+    /* path must be root or continue with a separator */
+    if ((path[rlen] != '\0') && (path[rlen] != '/') && (rlen != 1))
+        return 0;
+
+    memcpy(walk, path, plen + 1);
+
+    p = walk + rlen;
+    if (*p == '/')
+        ++p;
+
+    while (*p != '\0')
+    {
+        end = strchr(p, '/');
+        if (end != NULL)
+            *end = '\0';
+
+        if (lstat(walk, &filestats) != 0)
+        {
+            /* nothing here, so nothing deeper can exist either */
+            if ((errno == ENOENT) || (errno == ENOTDIR))
+                return 1;
+            return 0;
+        }
+
+        if (S_ISLNK(filestats.st_mode))
+            return 0;
+
+        if (end == NULL)
+            break;
+
+        *end = '/';
+        p = end + 1;
+    }
+
+    return 1;
 }
