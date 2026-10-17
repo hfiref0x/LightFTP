@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Oct 14, 2026
+ *  Modified on: Oct 16, 2026
  *
  *      Author: lightftp
  */
@@ -36,6 +36,12 @@ void *stor_thread(pthcontext tctx);
 void *retr_thread(pthcontext tctx);
 
 #define WORKER_CLEANUP_TIMEOUT_NS   500000000
+#define WORKER_CANCEL_TIMEOUT_NS    3000000000LL
+#define WORKER_POLL_NS              2000000
+
+#define ftp_atomic_load(p)          __atomic_load_n((p), __ATOMIC_SEQ_CST)
+#define ftp_atomic_store(p, v)      __atomic_store_n((p), (v), __ATOMIC_SEQ_CST)
+
 #define KEEPALIVE_IDLE_SEC          16
 #define KEEPALIVE_INTERVAL_SEC      16
 #define KEEPALIVE_PROBE_COUNT       8
@@ -43,6 +49,46 @@ void *retr_thread(pthcontext tctx);
 uint64_t g_threads = 0;
 unsigned int g_newid = 0;
 unsigned long long int g_client_sockets_created = 0, g_client_sockets_closed = 0;
+
+/*
+ * Data socket and file descriptor ownership:
+ * descriptors are closed by the worker thread only (normal exit or cancel
+ * handler), the control thread merely calls shutdown() to wake the worker.
+*/
+static SOCKET data_socket_swap(pftp_context context, SOCKET s)
+{
+    SOCKET  old;
+
+    pthread_mutex_lock(&context->data_lock);
+    old = context->data_socket;
+    context->data_socket = s;
+    pthread_mutex_unlock(&context->data_lock);
+    return old;
+}
+
+static void data_socket_close(pftp_context context)
+{
+    SOCKET  s = data_socket_swap(context, INVALID_SOCKET);
+
+    if (s != INVALID_SOCKET)
+        close(s);
+}
+
+static void data_socket_abort(pftp_context context)
+{
+    pthread_mutex_lock(&context->data_lock);
+    if (context->data_socket != INVALID_SOCKET)
+        shutdown(context->data_socket, SHUT_RDWR);
+    pthread_mutex_unlock(&context->data_lock);
+}
+
+static void file_fd_close(pftp_context context)
+{
+    int fd = __atomic_exchange_n(&context->file_fd, -1, __ATOMIC_SEQ_CST);
+
+    if (fd != -1)
+        close(fd);
+}
 
 static int reserve_client_slot(void)
 {
@@ -82,10 +128,19 @@ static const ftproutine_entry *ftpcmd_lookup(const char *cmd, size_t cmdlen)
         sizeof(ftpprocs) / sizeof(ftpprocs[0]), sizeof(ftpprocs[0]), ftpcmd_compare);
 }
 
+/*
+ * Worker exit path, shared by normal completion and pthread_cancel.
+ * Releasing busy is the very last access to context.
+*/
 static void cleanup_handler(void *arg)
 {
     pthcontext tctx = (pthcontext)arg;
+    pftp_context context = tctx->context;
     free(tctx);
+    file_fd_close(context);
+    data_socket_close(context);
+    ftp_atomic_store(&context->worker_thread_valid, -1);
+    __sync_sub_and_fetch(&context->busy, 1);
 }
 
 ssize_t sendstring_plaintext(SOCKET s, const char *Buffer)
@@ -174,7 +229,7 @@ static int data_connection_ready(pftp_context context)
 
 void create_datasocket(pftp_context context)
 {
-    SOCKET              client_socket = INVALID_SOCKET;
+    SOCKET              client_socket = INVALID_SOCKET, listen_socket;
     struct sockaddr_in  laddr;
     socklen_t           asz;
 
@@ -183,44 +238,43 @@ void create_datasocket(pftp_context context)
     switch ( context->mode ) {
     case MODE_NORMAL:
         client_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        context->data_socket = client_socket;
+        data_socket_swap(context, client_socket);
         if ( client_socket == INVALID_SOCKET )
             return;
 
         laddr.sin_family = AF_INET;
         laddr.sin_port = context->data_port;
         laddr.sin_addr.s_addr = context->data_ipv4;
-        if ( connect(client_socket, (const struct sockaddr *)&laddr, sizeof(laddr)) == -1 ) {
-            close(client_socket);
-            context->data_socket = INVALID_SOCKET;
-        }
+        if (connect(client_socket, (const struct sockaddr *)&laddr, sizeof(laddr)) == -1)
+            data_socket_close(context);
         break;
 
     case MODE_PASSIVE:
         asz = sizeof(laddr);
         client_socket = accept(context->data_socket, (struct sockaddr *)&laddr, &asz);
-        close(context->data_socket);
 
-        if ( client_socket == INVALID_SOCKET ) {
-            context->data_socket = INVALID_SOCKET;
+        /* listening socket is not needed anymore */
+        listen_socket = data_socket_swap(context, INVALID_SOCKET);
+        if (listen_socket != INVALID_SOCKET)
+            close(listen_socket);
+
+        if (client_socket == INVALID_SOCKET)
             return;
-        }
 
         /* Prevent cross-session data hijack */
         if ( laddr.sin_addr.s_addr != context->client_ipv4) {
             close(client_socket);
-            context->data_socket = INVALID_SOCKET;
             return;
         }
 
-        context->data_socket = client_socket;
+        data_socket_swap(context, client_socket);
         context->data_ipv4 = 0;
         context->data_port = 0;
         context->mode = MODE_NORMAL;
         break;
 
     default:
-        context->data_socket = INVALID_SOCKET;
+        data_socket_close(context);
         return;
     }
 }
@@ -302,50 +356,58 @@ ssize_t writelogentry(pftp_context context, const char *logtext1, const char *lo
     return writeconsolestr(text);
 }
 
+static int worker_thread_wait(pftp_context context, long long timeout_ns)
+{
+    struct timespec poll = {0};
+    long long       waited;
+
+    poll.tv_nsec = WORKER_POLL_NS;
+
+    for (waited = 0; waited < timeout_ns; waited += WORKER_POLL_NS)
+    {
+        if (ftp_atomic_load(&context->busy) == 0)
+            return 1;
+
+        nanosleep(&poll, NULL);
+    }
+
+    return (ftp_atomic_load(&context->busy) == 0);
+}
+
 void worker_thread_cleanup(pftp_context context)
 {
-	pthread_t			tid;
-    struct timespec     timeout = {0};
+    pthread_t   tid;
+
+    if (ftp_atomic_load(&context->worker_thread_valid) != 0)
+        return;
 
     tid = context->worker_thread_id;
-    if ( context->worker_thread_valid == 0 )
+    ftp_atomic_store(&context->worker_thread_abort, 1);
+
+    /* wake the worker if it is blocked in accept/connect/send/recv */
+    data_socket_abort(context);
+
+    if (!worker_thread_wait(context, WORKER_CLEANUP_TIMEOUT_NS))
     {
-        context->worker_thread_abort = 1;
-
-        timeout.tv_sec = 0;
-        timeout.tv_nsec = WORKER_CLEANUP_TIMEOUT_NS;
-
-        if ( context->data_socket != INVALID_SOCKET ) {
-          close(context->data_socket);
-          context->data_socket = INVALID_SOCKET;
-        }
-
-        if ( context->file_fd != -1 ) {
-          close(context->file_fd);
-          context->file_fd = -1;
-        }
-
-        context->data_ipv4 = 0;
-        context->data_port = 0;
-
-        nanosleep(&timeout, NULL);
-        if ( context->worker_thread_valid == -1 )
-          return;
-
+        /* cancel handler releases the worker resources */
         if (pthread_cancel(tid) != 0)
         {
             writelogentry(context, "Thread cancel failed", "");
         }
-        context->worker_thread_valid = -1;
+
+        if (!worker_thread_wait(context, WORKER_CANCEL_TIMEOUT_NS))
+            writelogentry(context, "Worker thread is still running", "");
     }
+
+    context->data_ipv4 = 0;
+    context->data_port = 0;
 }
 
 void worker_thread_start(pftp_context context, pstartroutine fn)
 {
     pthread_t       tid;
     pthcontext      tctx;
-
-    context->worker_thread_abort = 0;
+    int             rv;
 
     if (__sync_val_compare_and_swap(&context->busy, 0, 1) != 0)
     {
@@ -353,19 +415,24 @@ void worker_thread_start(pftp_context context, pstartroutine fn)
          return;
     }
 
+    ftp_atomic_store(&context->worker_thread_abort, 0);
+
     tctx = x_malloc(sizeof(thcontext));
     tctx->context = context;
     tctx->fn_type = 0;
     snprintf(tctx->th_file_name, sizeof(tctx->th_file_name), "%s", context->file_name);
 
-    context->worker_thread_valid = pthread_create(&tid, NULL, (void * (*)(void *))fn, tctx);
-    if ( context->worker_thread_valid == 0 )
+    /* mark worker as valid before it starts, it resets this on exit */
+    ftp_atomic_store(&context->worker_thread_valid, 0);
+    rv = pthread_create(&tid, NULL, (void * (*)(void *))fn, tctx);
+    if ( rv == 0 )
         context->worker_thread_id = tid;
     else
     {
+        ftp_atomic_store(&context->worker_thread_valid, -1);
         free(tctx);
         sendstring(context, error451);
-        context->busy = __sync_sub_and_fetch(&context->busy, 1);
+        __sync_sub_and_fetch(&context->busy, 1);
     }
 }
 
@@ -472,8 +539,16 @@ ssize_t ftpPORT(pftp_context context, const char *params)
     char		    *p = (char *)params;
     unsigned long   value;
 
+    /* data connection parameters belong to a running worker, do not touch them */
+    if ( ftp_atomic_load(&context->worker_thread_valid) == 0 )
+        return sendstring(context, error550_t);
+
     context->data_ipv4 = 0;
     context->data_port = 0;
+
+    /* drop passive mode listening socket left from PASV/EPSV */
+    data_socket_close(context);
+
     if ( context->access == FTP_ACCESS_NOT_LOGGED_IN )
         return sendstring(context, error530);
 
@@ -712,7 +787,7 @@ void *list_thread(pthcontext tctx)
                 ret = mlsd_sub(tctx->th_file_name, context->data_socket, TLS_datasession, entry);
             else
                 ret = list_sub(tctx->th_file_name, context->data_socket, TLS_datasession, entry);
-            if ( (ret == 0) || (context->worker_thread_abort != 0 ))
+            if ( (ret == 0) || (ftp_atomic_load(&context->worker_thread_abort) != 0 ))
                 break;
         }
         /* fd will be closed automatically */
@@ -728,19 +803,15 @@ void *list_thread(pthcontext tctx)
         sendstring(context, error451);
     }
     else {
-        if ((context->worker_thread_abort == 0) && (ret != 0))
+        if ((ftp_atomic_load(&context->worker_thread_abort) == 0) && (ret != 0))
             sendstring(context, success226);
         else
             sendstring(context, error426);
-
-        close(context->data_socket);
-        context->data_socket = INVALID_SOCKET;
     }
 
-    context->worker_thread_valid = -1;
-    pthread_cleanup_pop(0);
-    context->busy = __sync_sub_and_fetch(&context->busy, 1);
-    free(tctx);
+    /* cleanup handler closes descriptors and releases the worker slot */
+    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+    pthread_cleanup_pop(1);
     return NULL;
 }
 
@@ -750,7 +821,7 @@ ssize_t ftpLIST(pftp_context context, const char *params)
 
     if (context->access == FTP_ACCESS_NOT_LOGGED_IN)
         return sendstring(context, error530);
-    if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
+    if ((ftp_atomic_load(&context->worker_thread_valid) == 0) || (ftp_atomic_load(&context->file_fd) != -1))
         return sendstring(context, error550_t);
     if (!data_connection_ready(context))
         return sendstring(context, error425);
@@ -877,7 +948,7 @@ void *retr_thread(pthcontext tctx)
             buffer_size = TRANSMIT_BUFFER_SIZE;
 
         file_fd = open(tctx->th_file_name, O_RDONLY | g_cfg.file_open_flags);
-        context->file_fd = file_fd;
+        ftp_atomic_store(&context->file_fd, file_fd);
         if (file_fd == -1)
             break;
 
@@ -886,7 +957,7 @@ void *retr_thread(pthcontext tctx)
             break;
 
         sent_ok = 1;
-        while ( context->worker_thread_abort == 0 ) {
+        while ( ftp_atomic_load(&context->worker_thread_abort) == 0 ) {
             sz = read(file_fd, buffer, buffer_size);
             if (sz == 0)
                 break;
@@ -925,10 +996,7 @@ void *retr_thread(pthcontext tctx)
         break;
     }
 
-    if (file_fd != -1)
-        close(file_fd);
-
-    context->file_fd = -1;
+    file_fd_close(context);
     context->rest_point = 0;
 
     if (buffer != NULL) {
@@ -941,19 +1009,15 @@ void *retr_thread(pthcontext tctx)
         sendstring(context, error451);
     }
     else {
-        if ((context->worker_thread_abort == 0) && (sent_ok != 0))
+        if ((ftp_atomic_load(&context->worker_thread_abort) == 0) && (sent_ok != 0))
             sendstring(context, success226);
         else
             sendstring(context, error426);
-
-        close(context->data_socket);
-        context->data_socket = INVALID_SOCKET;
     }
 
-    context->worker_thread_valid = -1;
-    pthread_cleanup_pop(0);
-    context->busy = __sync_sub_and_fetch(&context->busy, 1);
-    free(tctx);
+    /* cleanup handler closes descriptors and releases the worker slot */
+    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+    pthread_cleanup_pop(1);
     return NULL;
 }
 
@@ -963,7 +1027,7 @@ ssize_t ftpRETR(pftp_context context, const char *params)
 
     if (context->access == FTP_ACCESS_NOT_LOGGED_IN)
         return sendstring(context, error530);
-    if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
+    if ((ftp_atomic_load(&context->worker_thread_valid) == 0) || (ftp_atomic_load(&context->file_fd) != -1))
         return sendstring(context, error550_t);
     if (!data_connection_ready(context))
         return sendstring(context, error425);
@@ -1000,7 +1064,6 @@ ssize_t ftpABOR(pftp_context context, const char *params)
 
     writelogentry(context, " ABOR command", NULL);
     worker_thread_cleanup(context);
-    context->busy = __sync_val_compare_and_swap(&context->busy, 1, 0);
     return sendstring(context, success226);
 }
 
@@ -1045,16 +1108,13 @@ int pasv(pftp_context context)
             break;
         }
 
-        if ( context->worker_thread_valid == 0 )
+        if ( ftp_atomic_load(&context->worker_thread_valid) == 0 )
         {
             sendstring(context, error550_t);
             break;
         }
 
-        if ( context->data_socket != INVALID_SOCKET )
-            close(context->data_socket);
-
-        context->data_socket = INVALID_SOCKET;
+        data_socket_close(context);
 
         /* Validate configured passive port range before creating socket */
         if ((g_cfg.pasv_port_base == 0) ||
@@ -1113,7 +1173,7 @@ int pasv(pftp_context context)
         }
 
         context->data_port = laddr.sin_port;
-        context->data_socket = data_socket;
+        data_socket_swap(context, data_socket);
         context->mode = MODE_PASSIVE;
 
         result = 1;
@@ -1388,7 +1448,7 @@ void *stor_thread(pthcontext tctx)
         if (file_fd == -1)
             file_open_errno = errno; /* capture errno before anything else can touch it */
 
-        context->file_fd = file_fd;
+        ftp_atomic_store(&context->file_fd, file_fd);
         if (file_fd == -1) {
             xr = XFER_NO_FILE;
             break;
@@ -1400,7 +1460,7 @@ void *stor_thread(pthcontext tctx)
             break;
         }
 
-        while (context->worker_thread_abort == 0)
+        while (ftp_atomic_load(&context->worker_thread_abort) == 0)
         {
             sz = recv_auto(context->data_socket, TLS_datasession, buffer, buffer_size);
             if (sz > 0)
@@ -1438,10 +1498,7 @@ void *stor_thread(pthcontext tctx)
         break;
     }
 
-    if (file_fd != -1)
-        close(file_fd);
-
-    context->file_fd = -1;
+    file_fd_close(context);
 
     if (buffer != NULL) {
         free(buffer);
@@ -1471,21 +1528,18 @@ void *stor_thread(pthcontext tctx)
             break;
         case XFER_OK:
         default:
-            if (context->worker_thread_abort == 0)
+            if (ftp_atomic_load(&context->worker_thread_abort) == 0)
                 sendstring(context, success226);
             else
                 sendstring(context, error426);
             break;
         }
 
-        close(context->data_socket);
-        context->data_socket = INVALID_SOCKET;
     }
 
-    context->worker_thread_valid = -1;
-    pthread_cleanup_pop(0);
-    context->busy = __sync_sub_and_fetch(&context->busy, 1);
-    free(tctx);
+    /* cleanup handler closes descriptors and releases the worker slot */
+    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+    pthread_cleanup_pop(1);
     return NULL;
 }
 
@@ -1499,7 +1553,7 @@ ssize_t ftpSTOR(pftp_context context, const char *params)
         return sendstring(context, error550_r);
     if ( params == NULL )
         return sendstring(context, error501);
-    if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
+    if ((ftp_atomic_load(&context->worker_thread_valid) == 0) || (ftp_atomic_load(&context->file_fd) != -1))
         return sendstring(context, error550_t);
     if (!data_connection_ready(context))
         return sendstring(context, error425);
@@ -1670,7 +1724,7 @@ ssize_t ftpAPPE(pftp_context context, const char *params)
         return sendstring(context, error550_r);
     if ( params == NULL )
         return sendstring(context, error501);
-    if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
+    if ((ftp_atomic_load(&context->worker_thread_valid) == 0) || (ftp_atomic_load(&context->file_fd) != -1))
         return sendstring(context, error550_t);
     if (!data_connection_ready(context))
         return sendstring(context, error425);
@@ -1904,7 +1958,7 @@ ssize_t ftpMLSD(pftp_context context, const char *params)
 
     if (context->access == FTP_ACCESS_NOT_LOGGED_IN)
         return sendstring(context, error530);
-    if ((context->worker_thread_valid == 0) || (context->file_fd != -1))
+    if ((ftp_atomic_load(&context->worker_thread_valid) == 0) || (ftp_atomic_load(&context->file_fd) != -1))
         return sendstring(context, error550_t);
     if (!data_connection_ready(context))
         return sendstring(context, error425);
@@ -1993,6 +2047,9 @@ void *ftp_client_thread(void *arg)
     pthread_detach(pthread_self());
     memset(&rcvbuf, 0, sizeof(rcvbuf));
     memset(&ctx, 0, sizeof(ctx));
+    pthread_mutex_init(&ctx.data_lock, NULL);
+    ctx.file_fd = -1;
+    ctx.data_socket = INVALID_SOCKET;
 
     ctx.busy = 0;
     ctx.access = FTP_ACCESS_NOT_LOGGED_IN;
@@ -2019,8 +2076,6 @@ void *ftp_client_thread(void *arg)
         ctx.mode = MODE_NORMAL;
         ctx.worker_thread_abort = 1;
         ctx.worker_thread_valid = -1;
-        ctx.file_fd = -1;
-        ctx.data_socket = INVALID_SOCKET;
 
         ctx.current_dir[0] = '/';
         sendstring(&ctx, success220);
@@ -2090,6 +2145,8 @@ void *ftp_client_thread(void *arg)
     }
 
     ftp_shutdown_tls_session(ctx.tls_session);
+    data_socket_close(&ctx);
+    pthread_mutex_destroy(&ctx.data_lock);
 
     close(ctx.control_socket);
     __sync_add_and_fetch(&g_client_sockets_closed, 1);
@@ -2190,8 +2247,14 @@ void *ftpmain(void *p)
         }
 
         snprintf(text, sizeof(text),
-                "MAIN LOOP stats: g_threads=%" PRIu64 ", g_cfg.max_users=%" PRIu64 ", g_client_sockets_created=%llu, g_client_sockets_closed=%llu\r\n",
-                 g_threads, g_cfg.max_users, g_client_sockets_created, g_client_sockets_closed);
+                 "MAIN LOOP stats: g_threads=%" PRIu64
+                 ", g_cfg.max_users=%" PRIu64
+                 ", g_client_sockets_created=%llu"
+                 ", g_client_sockets_closed=%llu\r\n",
+                 __sync_fetch_and_add(&g_threads, 0),
+                 g_cfg.max_users,
+                 __sync_fetch_and_add(&g_client_sockets_created, 0),
+                 __sync_fetch_and_add(&g_client_sockets_closed, 0));
 
         writelogentry(NULL, text, "");
     }
