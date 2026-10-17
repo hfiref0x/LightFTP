@@ -3,7 +3,7 @@
  *
  *  Created on: May 17, 2020
  *
- *  Modified on: Jul 25, 2025
+ *  Modified on: Oct 15, 2025
  *
  *      Author: lightftp
  */
@@ -15,5 +15,6 @@ char *filepath(char *s);
 int ftp_normalize_path(char* path, size_t npath_len, char* npath);
 int ftp_effective_path(char *root_path, char *current_path,
         const char *file_path, size_t result_size, char *result);
+int ftp_path_has_no_symlinks(const char *root_path, const char *path);
 
 #endif /* FSPATHTOOLS_H_ */
