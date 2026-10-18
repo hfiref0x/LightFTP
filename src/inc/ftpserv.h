@@ -108,6 +108,12 @@ typedef struct {
     int                 busy;
     SOCKET              control_socket;
     SOCKET              data_socket;
+    /*
+     * data_lock serializes replacing/closing data_socket with shutdown()
+     * called on it from the control thread, so an fd is never used after close.
+     */
+    pthread_mutex_t     data_lock;
+
     pthread_t           worker_thread_id;
     /*
      * worker_thread_valid is output of pthread_create
