@@ -181,7 +181,7 @@ Since 2.2, the old unmaintained Windows version has been moved to a separate arc
 
 # Changelog
 
-Changelog available at `data/changelog.txt`.
+Changelog available at [`data/changelog.txt`](https://github.com/hfiref0x/LightFTP/blob/master/data/changelog.txt).
 
 # Authors
 
