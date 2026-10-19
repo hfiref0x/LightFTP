@@ -40,7 +40,7 @@ FIXED
 - REST value is now checked before use (#80).
 - Connection slot accounting. maxusers is enforced safely under concurrency.
 - Race conditions. Worker-thread cleanup races and use-after-close of file descriptors. Also thread-cancel safety and makefile/build script fixes.
-- Issues #37 and #44 (commit aaf2710) and #45 and #60 (commit 92861b3). The commit messages give only the issue numbers, so check their titles before publishing.
+- Issues #37 and #44 (commit aaf2710) and #45 and #60 (commit 92861b3).
 - Type-cast fix for character checks (#64).
 - GCC warnings, and the redundant linux/limits.h includes.
 
