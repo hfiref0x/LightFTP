@@ -1,73 +1,191 @@
-+ Added
-- Removed
-* Fixed/Changed
+LightFTP changelog: v2.3.1 → master (e7daa84, 2026-10-19)
+=========================================================
 
-Jun 30, 2024, v2.3.1
-* fix for race condition bug in ABRT command
+ADDED
+-----
+- PBKDF2-SHA256 password hashing (src/fcrypt.c). Users can have a hashpswd= record in the form pbkdf2-sha256$iterations$salt$hash, and fftp -p generates one. Sensitive buffers are zeroed after use.
+- MODE and STRU commands.
+- Optional TLS. The server now starts without a certificate or key. TLS-specific commands are hidden or rejected when TLS isn't configured.
+- follow_symlinks option in fftp.conf. It defaults to 0, so symlinks are not followed.
+- Symlink escape test script (src/tests/test_symlink_issue72.py).
+- Timeout for worker thread cancellation.
+- CONTRIBUTING.md, a README table of contents, build badge and ASAN build notes, and VS Code configs.
 
-Feb 4, 2023, v2.3
-* fix CVE-2023-24042 (#25) 
-+ more statistics added
-+ internal rearrange
+CHANGED
+-------
+- Path handling. Every path-using command (LIST, CWD, RETR, STOR, APPE, DELE, MKD, RMD, SIZE, RNFR, RNTO, MLSD, CHMOD) now resolves paths through a new wrapper that rejects symlinked path components when symlinks aren't followed.
+- Worker thread ownership. The worker thread is now the sole owner of the data socket and file descriptor. The control thread only calls shutdown() and waits. Shared state uses atomics and a per-client data_lock.
+- TLS control replies. For TLS-protected control connections, transfer workers no longer write replies directly, since a GnuTLS session must not be used by two threads at once. Workers hand the reply to the control thread through a wake pipe.
+- AUTH rejects a repeated TLS request (503) and is refused while a transfer worker is active. PORT is rejected while a worker is running.
+- Command lookup uses binary search instead of a linear scan. The command table is kept sorted.
+- TYPE handling updated (#86). TYPE L/E variants and unsupported parameters now return 504, while S/F return 200.
+- Stricter input validation:
+  - Control bytes: control and NUL bytes are rejected.
+  - USER: character checks, including DEL.
+  - PORT: digit and delimiter rules.
+  - REST: digits only, parsed into an unsigned value.
+  - PBSZ: parameter validation.
+- Stricter config parsing and validation for IPs, ports, booleans and maxusers. Config and log files are opened with O_CLOEXEC, and zero-length config files are handled.
+- STOR I/O errors now map to appropriate reply codes (#81).
+- TLS initialization reports explicit success or failure, cleans up after partial init, and honors data_protection_level.
+- Sample fftp.conf: no embedded plaintext admin password (the admin user now uses hashpswd), and the file moved to data/.
+- Source tree restructured (src/, src/inc/, data/). Types and thread names refactored to lowercase. Makefiles and AppVeyor config updated. README updated with new Windows version support, build and config instructions.
+- This changelog reformatted.
 
-Jan 7, 2022, v2.2
-+ basic session statistics logged
-+ TLS session resumption
-* zero-length files transfer error
-+ chmod command implemented
-+ goodbye message now configurable (#21)
-+ readme and fftp example config updated
-+ hardcode compiler in makefile changed (PR #20, #19)
+FIXED
+-----
+- Symlink escape (#72). O_NOFOLLOW only protects the last path component, so a symlink in an intermediate directory could escape the FTP root.
+- Cross-session data hijack (#74).
+- Password check wildcard (#73).
+- REST value is now checked before use (#80).
+- Connection slot accounting. maxusers is enforced safely under concurrency.
+- Race conditions. Worker-thread cleanup races and use-after-close of file descriptors. Also thread-cancel safety and makefile/build script fixes.
+- Issues #37 and #44 (commit aaf2710) and #45 and #60 (commit 92861b3). The commit messages give only the issue numbers, so check their titles before publishing.
+- Type-cast fix for character checks (#64).
+- GCC warnings, and the redundant linux/limits.h includes.
 
-May 17, 2020, v2.1
-* bugfixes and refactoring
+REMOVED
+-------
+- The LightFTP.sha256 file.
+- The old SHA256+Base64 password flow, replaced by PBKDF2.
+- The old Source/ and Bin/ layout.
 
-Jun 28, 2018, v2.0a
+v2.3.1 (Jun 30, 2024)
+=====================
 
-+ simplify path processing functions
-+ old lame string formatting refactored
+FIXED
+-----
+- Race condition bug in ABRT command
 
-Feb 8, 2018, v2.0
+v2.3 (Feb 4, 2023)
+==================
 
-+ ftps
-+ config file now has comments
-+ cygwin compatibility
-+ multiple other changes
-+ readme updated
+ADDED
+-----
+- More statistics
 
-Feb 3, 2018, v1.1
+CHANGED
+-------
+- Internal rearrange
 
-+ more work around malloc calls
-+ some redesign in ftpserv.c format_path routine
+FIXED
+-----
+- CVE-2023-24042 (#25)
 
-Feb 2, 2018, v1.1
+v2.2 (Jan 7, 2022)
+==================
 
-+ error checking added for several malloc calls
+ADDED
+-----
+- Basic session statistics logged
+- TLS session resumption
+- chmod command implemented
+- Goodbye message now configurable (#21)
 
-Jan 8, 2018, v1.1
+CHANGED
+-------
+- Readme and fftp example config updated
+- Hardcoded compiler in makefile changed (PR #20, #19)
 
-* Do not display user pass during connection
-* Disable logging if no log file specified in ftp config
-+ More details if log file open failed
-+ Made this changelog public
+FIXED
+-----
+- Zero-length files transfer error
 
-Oct 22, 2017, v1.1
+v2.1 (May 17, 2020)
+===================
 
-* Fix Issue 6 "Cannot overwrite file"
+CHANGED
+-------
+- Bugfixes and refactoring
 
-Jul 14, 2017, v1.1
+v2.0a (Jun 28, 2018)
+====================
 
-+ Added more output messages in case of error
+CHANGED
+-------
+- Simplify path processing functions
+- Old lame string formatting refactored
 
-Jul 6, 2017, v1.1
+v2.0 (Feb 8, 2018)
+==================
 
-* Fix Issue 5 Buffer overflow in writelogentry
+ADDED
+-----
+- FTPS
+- Config file now has comments
+- Cygwin compatibility
 
-Apr 20, 2017, v1.1
+CHANGED
+-------
+- Multiple other changes
+- Readme updated
 
-+ Performance counters added
-* Several changes after profiling
+v1.1 (Feb 3, 2018)
+==================
 
-Sep 17, 2016, v1.1
+CHANGED
+-------
+- More work around malloc calls
+- Some redesign in ftpserv.c format_path routine
 
-+ Version 1.1 github release
+v1.1 (Feb 2, 2018)
+==================
+
+ADDED
+-----
+- Error checking for several malloc calls
+
+v1.1 (Jan 8, 2018)
+==================
+
+ADDED
+-----
+- More details if log file open failed
+- Made this changelog public
+
+CHANGED
+-------
+- Disable logging if no log file specified in ftp config
+
+FIXED
+-----
+- Do not display user pass during connection
+
+v1.1 (Oct 22, 2017)
+===================
+
+FIXED
+-----
+- Issue 6 "Cannot overwrite file"
+
+v1.1 (Jul 14, 2017)
+===================
+
+ADDED
+-----
+- More output messages in case of error
+
+v1.1 (Jul 6, 2017)
+==================
+
+FIXED
+-----
+- Issue 5 Buffer overflow in writelogentry
+
+v1.1 (Apr 20, 2017)
+===================
+
+ADDED
+-----
+- Performance counters
+
+CHANGED
+-------
+- Several changes after profiling
+
+v1.1 (Sep 17, 2016)
+===================
+
+ADDED
+-----
+- Version 1.1 GitHub release
