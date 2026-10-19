@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Oct 16, 2026
+ *  Modified on: Oct 18, 2026
  *
  *      Author: lightftp
  */
@@ -356,6 +356,103 @@ ssize_t writelogentry(pftp_context context, const char *logtext1, const char *lo
     return writeconsolestr(text);
 }
 
+static int worker_thread_wait(pftp_context context, long long timeout_ns);
+
+/*
+ * Control connection TLS session ownership:
+ * a gnutls session must not be used by two threads at the same time, so when
+ * the control connection is protected a transfer worker never writes to it.
+ * It leaves the final reply in worker_reply and wakes the control thread via
+ * wake_pipe; the control thread is the only one that sends it.
+ * No locks are involved: the worker never waits for the control thread.
+*/
+static void ctrl_pipe_close(pftp_context context)
+{
+    int c;
+
+    for (c = 0; c < 2; ++c)
+    {
+        if (context->wake_pipe[c] != -1)
+        {
+            close(context->wake_pipe[c]);
+            context->wake_pipe[c] = -1;
+        }
+    }
+}
+
+static int ctrl_pipe_open(pftp_context context)
+{
+    int c, flags;
+
+    if (pipe(context->wake_pipe) != 0)
+    {
+        context->wake_pipe[0] = context->wake_pipe[1] = -1;
+        return 0;
+    }
+
+    for (c = 0; c < 2; ++c)
+    {
+        flags = fcntl(context->wake_pipe[c], F_GETFL, 0);
+        if ((flags == -1) ||
+            (fcntl(context->wake_pipe[c], F_SETFL, flags | O_NONBLOCK) == -1) ||
+            (fcntl(context->wake_pipe[c], F_SETFD, FD_CLOEXEC) == -1))
+        {
+            ctrl_pipe_close(context);
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static void ctrl_pipe_drain(pftp_context context)
+{
+    char buffer[32];
+
+    while (read(context->wake_pipe[0], buffer, sizeof(buffer)) > 0)
+        ;
+}
+
+/* control thread only: send the reply left by a finished worker, if any */
+static void worker_reply_flush(pftp_context context)
+{
+    const char *text;
+
+    if (ftp_atomic_load(&context->ctrl_handoff) == 0)
+        return;
+
+    ctrl_pipe_drain(context);
+    text = __atomic_exchange_n(&context->worker_reply, NULL, __ATOMIC_SEQ_CST);
+    if (text != NULL)
+    {
+        /*
+         * The worker is in its last steps. Do not show the reply before it has
+         * released its slot, or the next command of the client may find the
+         * finished transfer still running. The worker never waits for us.
+        */
+        worker_thread_wait(context, WORKER_CLEANUP_TIMEOUT_NS);
+        sendstring(context, text);
+    }
+}
+
+/* worker thread: final reply of a transfer */
+static void worker_reply(pftp_context context, const char *text)
+{
+    __attribute__((__unused__)) ssize_t un;
+
+    if (ftp_atomic_load(&context->ctrl_handoff) == 0)
+    {
+        sendstring(context, text);
+        return;
+    }
+
+    if (__atomic_exchange_n(&context->worker_reply, text, __ATOMIC_SEQ_CST) != NULL)
+        writelogentry(context, " Worker reply was not consumed", "");
+
+    /* non blocking: the byte only wakes poll() in ctrl_tls_recv */
+    un = write(context->wake_pipe[1], "x", 1);
+}
+
 static int worker_thread_wait(pftp_context context, long long timeout_ns)
 {
     struct timespec poll = {0};
@@ -378,8 +475,11 @@ void worker_thread_cleanup(pftp_context context)
 {
     pthread_t   tid;
 
-    if (ftp_atomic_load(&context->worker_thread_valid) != 0)
+    if (ftp_atomic_load(&context->worker_thread_valid) != 0) {
+        /* worker already finished, its reply may be waiting */
+        worker_reply_flush(context);
         return;
+    }
 
     tid = context->worker_thread_id;
     ftp_atomic_store(&context->worker_thread_abort, 1);
@@ -401,6 +501,9 @@ void worker_thread_cleanup(pftp_context context)
 
     context->data_ipv4 = 0;
     context->data_port = 0;
+
+    /* 426 of the aborted transfer goes out before the reply to ABOR */
+    worker_reply_flush(context);
 }
 
 void worker_thread_start(pftp_context context, pstartroutine fn)
@@ -415,6 +518,8 @@ void worker_thread_start(pftp_context context, pstartroutine fn)
          return;
     }
 
+    /* previous worker is gone, make sure its reply is not overwritten */
+    worker_reply_flush(context);
     ftp_atomic_store(&context->worker_thread_abort, 0);
 
     tctx = x_malloc(sizeof(thcontext));
@@ -800,13 +905,13 @@ void *list_thread(pthcontext tctx)
     writelogentry(context, " LIST/MLSD complete", "");
 
     if (context->data_socket == INVALID_SOCKET) {
-        sendstring(context, error451);
+        worker_reply(context, error451);
     }
     else {
         if ((ftp_atomic_load(&context->worker_thread_abort) == 0) && (ret != 0))
-            sendstring(context, success226);
+            worker_reply(context, success226);
         else
-            sendstring(context, error426);
+            worker_reply(context, error426);
     }
 
     /* cleanup handler closes descriptors and releases the worker slot */
@@ -1006,13 +1111,13 @@ void *retr_thread(pthcontext tctx)
     ftp_shutdown_tls_session(TLS_datasession);
 
     if (context->data_socket == INVALID_SOCKET) {
-        sendstring(context, error451);
+        worker_reply(context, error451);
     }
     else {
         if ((ftp_atomic_load(&context->worker_thread_abort) == 0) && (sent_ok != 0))
-            sendstring(context, success226);
+            worker_reply(context, success226);
         else
-            sendstring(context, error426);
+            worker_reply(context, error426);
     }
 
     /* cleanup handler closes descriptors and releases the worker slot */
@@ -1507,7 +1612,7 @@ void *stor_thread(pthcontext tctx)
     ftp_shutdown_tls_session(TLS_datasession);
 
     if (context->data_socket == INVALID_SOCKET) {
-        sendstring(context, error451);
+        worker_reply(context, error451);
     }
     else {
 
@@ -1515,23 +1620,23 @@ void *stor_thread(pthcontext tctx)
         switch (xr)
         {
         case XFER_NO_FILE:
-            sendstring(context, (file_open_errno == EACCES) ? error550_r : error550);
+            worker_reply(context, (file_open_errno == EACCES) ? error550_r : error550);
             break;
         case XFER_SEEK_FAIL:
-            sendstring(context, error451);
+            worker_reply(context, error451);
             break;
         case XFER_WRITE_FAIL:
-            sendstring(context, error452);
+            worker_reply(context, error452);
             break;
         case XFER_RECV_FAIL:
-            sendstring(context, error426);
+            worker_reply(context, error426);
             break;
         case XFER_OK:
         default:
             if (ftp_atomic_load(&context->worker_thread_abort) == 0)
-                sendstring(context, success226);
+                worker_reply(context, success226);
             else
-                sendstring(context, error426);
+                worker_reply(context, error426);
             break;
         }
 
@@ -1828,8 +1933,24 @@ ssize_t ftpAUTH(pftp_context context, const char *params)
             return sendstring(context, error502);
         }
 
+        /* TLS is already active */
+        if ( context->tls_session != NULL )
+            return sendstring(context, error503);
+
+        /* a worker reads the session pointer, do not replace it under its feet */
+        if ( ftp_atomic_load(&context->worker_thread_valid) == 0 )
+            return sendstring(context, error550_t);
+
         /* ftp_init_tls_session will send a status reply */
         ftp_init_tls_session(&context->tls_session, context->control_socket, 1);
+
+        if ( context->tls_session != NULL )
+        {
+            if ( ctrl_pipe_open(context) )
+                ftp_atomic_store(&context->ctrl_handoff, 1);
+            else
+                writelogentry(context, " Control wake pipe failed, replies are not serialized", "");
+        }
         return 1;
     }
     else
@@ -1983,6 +2104,54 @@ ssize_t ftpMLSD(pftp_context context, const char *params)
     return sendstring(context, error550);
 }
 
+/*
+ * Receives from the protected control connection. Waits in poll() so a worker
+ * can wake us up to send its reply, instead of blocking inside gnutls.
+*/
+static ssize_t ctrl_tls_recv(pftp_context context, void *buffer, size_t size)
+{
+    struct pollfd   pfd[2];
+    ssize_t         l;
+    int             rv;
+
+    for (;;)
+    {
+        worker_reply_flush(context);
+
+        if ((context->wake_pipe[0] != -1) &&
+            (gnutls_record_check_pending(context->tls_session) == 0))
+        {
+            pfd[0].fd = context->control_socket;
+            pfd[0].events = POLLIN;
+            pfd[0].revents = 0;
+            pfd[1].fd = context->wake_pipe[0];
+            pfd[1].events = POLLIN;
+            pfd[1].revents = 0;
+
+            rv = poll(pfd, 2, -1);
+            if (rv < 0)
+            {
+                if (errno == EINTR)
+                    continue;
+                return -1;
+            }
+
+            if ((pfd[1].revents & POLLIN) != 0)
+            {
+                /* flushed at the top of the loop, unless the client also sent data */
+                if ((pfd[0].revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL)) == 0)
+                    continue;
+            }
+        }
+
+        l = gnutls_record_recv(context->tls_session, buffer, size);
+        if ((l == GNUTLS_E_AGAIN) || (l == GNUTLS_E_INTERRUPTED))
+            continue;
+
+        return l;
+    }
+}
+
 int recvcmd(pftp_context context, char *buffer, size_t buffer_size)
 {
     ssize_t	l, p = 0;
@@ -1999,7 +2168,7 @@ int recvcmd(pftp_context context, char *buffer, size_t buffer_size)
         if (context->tls_session == NULL)
             l = recv(context->control_socket, buffer+p, buffer_size, 0);
         else
-            l = gnutls_record_recv(context->tls_session, buffer+p, buffer_size);
+            l = ctrl_tls_recv(context, buffer+p, buffer_size);
 
         if ( l <= 0 )
             return 0;
@@ -2050,6 +2219,8 @@ void *ftp_client_thread(void *arg)
     pthread_mutex_init(&ctx.data_lock, NULL);
     ctx.file_fd = -1;
     ctx.data_socket = INVALID_SOCKET;
+    ctx.wake_pipe[0] = -1;
+    ctx.wake_pipe[1] = -1;
 
     ctx.busy = 0;
     ctx.access = FTP_ACCESS_NOT_LOGGED_IN;
@@ -2146,8 +2317,12 @@ void *ftp_client_thread(void *arg)
 
     ftp_shutdown_tls_session(ctx.tls_session);
     data_socket_close(&ctx);
-    pthread_mutex_destroy(&ctx.data_lock);
 
+    /* a worker that did not stop could still write to the pipe */
+    if ( ftp_atomic_load(&ctx.busy) == 0 )
+        ctrl_pipe_close(&ctx);
+    
+    pthread_mutex_destroy(&ctx.data_lock);
     close(ctx.control_socket);
     __sync_add_and_fetch(&g_client_sockets_closed, 1);
     tn = __sync_sub_and_fetch(&g_threads, 1);
