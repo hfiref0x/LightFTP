@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Sep 26, 2026
+ *  Modified on: Oct 18, 2026
  *
  *      Author: lightftp
  */
@@ -25,6 +25,7 @@
 
 #include <errno.h>
 #include <time.h>
+#include <poll.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <stdint.h>
@@ -111,8 +112,16 @@ typedef struct {
     /*
      * data_lock serializes replacing/closing data_socket with shutdown()
      * called on it from the control thread, so an fd is never used after close.
-     */
+    */
     pthread_mutex_t     data_lock;
+
+    /*
+     * Control connection TLS: a gnutls session must not be used by two threads
+     * at once, so the worker hands its final reply to the control thread.
+    */
+    int                 wake_pipe[2];
+    const char          *worker_reply;
+    int                 ctrl_handoff;
 
     pthread_t           worker_thread_id;
     /*
