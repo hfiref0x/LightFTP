@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Oct 18, 2026
+ *  Modified on: Nov 13, 2026
  *
  *      Author: lightftp
  */
@@ -156,7 +156,31 @@ void ftp_shutdown_tls_session(gnutls_session_t session)
     }
 }
 
-int ftp_init_tls_session(gnutls_session_t *session, SOCKET s, int send_status)
+static int ftp_data_tls_session_matches_control(gnutls_session_t control_session, gnutls_session_t data_session)
+{
+    unsigned char   control_id[GNUTLS_MAX_SESSION_ID];
+    unsigned char   data_id[GNUTLS_MAX_SESSION_ID];
+    size_t          control_id_size;
+    size_t          data_id_size;
+
+    if (gnutls_session_is_resumed(data_session) == 0)
+        return 0;
+
+    control_id_size = sizeof(control_id);
+    data_id_size = sizeof(data_id);
+
+    if ((gnutls_session_get_id(control_session, control_id, &control_id_size) < 0) ||
+        (gnutls_session_get_id(data_session, data_id, &data_id_size) < 0) ||
+        (control_id_size == 0) ||
+        (control_id_size != data_id_size))
+    {
+        return 0;
+    }
+
+    return memcmp(control_id, data_id, control_id_size) == 0;
+}
+
+int ftp_init_tls_session(gnutls_session_t *session, SOCKET s, int send_status, gnutls_session_t control_session)
 {
     int ret;
     gnutls_session_t nsession = NULL;
@@ -193,6 +217,13 @@ int ftp_init_tls_session(gnutls_session_t *session, SOCKET s, int send_status)
 
         if (send_status)
             sendstring_plaintext(s, error500_auth);
+        return 0;
+    }
+
+    if ((control_session != NULL) &&
+        !ftp_data_tls_session_matches_control(control_session, nsession))
+    {
+        ftp_shutdown_tls_session(nsession);
         return 0;
     }
 
@@ -874,7 +905,7 @@ void *list_thread(pthcontext tctx)
     while (context->data_socket != INVALID_SOCKET)
     {
         if (context->data_protection_level != 0)
-            if (!ftp_init_tls_session(&TLS_datasession, context->data_socket, 0))
+            if (!ftp_init_tls_session(&TLS_datasession, context->data_socket, 0, context->tls_session))
                 break;
         
         fd = open(tctx->th_file_name, O_DIRECTORY | O_RDONLY | g_cfg.file_open_flags);
@@ -1042,7 +1073,7 @@ void *retr_thread(pthcontext tctx)
 
         if (context->data_protection_level != 0)
         {
-            if (!ftp_init_tls_session(&TLS_datasession, context->data_socket, 0))
+            if (!ftp_init_tls_session(&TLS_datasession, context->data_socket, 0, context->tls_session))
                 break;
 
             buffer_size = gnutls_record_get_max_size(TLS_datasession);
@@ -1358,7 +1389,14 @@ ssize_t ftpPASS(pftp_context context, const char *userpass)
         memset(context->root_dir, 0, sizeof(context->root_dir));
         memset(temptext, 0, sizeof(temptext));
 
-        config_parse(g_cfg.config_file, context->user_name, "root", context->root_dir, sizeof(context->root_dir));
+        if (!config_parse(g_cfg.config_file, context->user_name, "root",
+            context->root_dir, sizeof(context->root_dir)) ||
+            (context->root_dir[0] == 0))
+        {
+            writelogentry(context, " PASS: account root directory is invalid", "");
+            return sendstring(context, error530_b);
+        }
+        
         config_parse(g_cfg.config_file, context->user_name, "accs", temptext, sizeof(temptext));
 
         do {
@@ -1388,7 +1426,6 @@ ssize_t ftpPASS(pftp_context context, const char *userpass)
 
     return sendstring(context, success230);
 }
-
 
 ssize_t ftpREST(pftp_context context, const char *params)
 {
@@ -1535,7 +1572,7 @@ void *stor_thread(pthcontext tctx)
 
         if (context->data_protection_level != 0)
         {
-            if (!ftp_init_tls_session(&TLS_datasession, context->data_socket, 0))
+            if (!ftp_init_tls_session(&TLS_datasession, context->data_socket, 0, context->tls_session))
                 break;
 
             buffer_size = gnutls_record_get_max_size(TLS_datasession);
@@ -1942,7 +1979,7 @@ ssize_t ftpAUTH(pftp_context context, const char *params)
             return sendstring(context, error550_t);
 
         /* ftp_init_tls_session will send a status reply */
-        ftp_init_tls_session(&context->tls_session, context->control_socket, 1);
+        ftp_init_tls_session(&context->tls_session, context->control_socket, 1, NULL);
 
         if ( context->tls_session != NULL )
         {
