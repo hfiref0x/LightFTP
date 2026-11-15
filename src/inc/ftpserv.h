@@ -3,7 +3,7 @@
  *
  *  Created on: Aug 20, 2016
  *
- *  Modified on: Oct 18, 2026
+ *  Modified on: Nov 13, 2026
  *
  *      Author: lightftp
  */
@@ -74,7 +74,7 @@ typedef struct {
     in_addr_t       local_ip_mask;
 } ftp_config, *pftp_config;
 
-#define FTP_VERSION          "2.4"
+#define FTP_VERSION          "2.4.1"
 #define CONFIG_FILE_NAME     "fftp.conf"
 #define CONFIG_SECTION_NAME  "ftpconfig"
 #define DEFAULT_FTP_PORT     21
@@ -112,7 +112,7 @@ typedef struct {
     /*
      * data_lock serializes replacing/closing data_socket with shutdown()
      * called on it from the control thread, so an fd is never used after close.
-    */
+     */
     pthread_mutex_t     data_lock;
 
     /*
